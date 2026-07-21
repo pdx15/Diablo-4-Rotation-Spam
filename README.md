@@ -22,12 +22,6 @@ A lightweight, high-performance overlay and macro automation tool for Diablo 4, 
   <img src="assets/settings_preview.png" alt="Configuration Menu" width="460"/>
 </p>
 
-### Installation & Setup
-1. Clone the repository and open the project solution in **Visual Studio 2022**.
-2. Ensure you have added the **Dear ImGui** source files and backends (`win32`, `dx11`) to your project tree.
-3. Set the build configuration to **Release / x64** (Diablo 4 runs strictly in x64).
-4. Build and run the project.
-
 ---
 
 ## Русский
@@ -44,7 +38,7 @@ A lightweight, high-performance overlay and macro automation tool for Diablo 4, 
 
 ### Внешний вид интерфейса
 <p align="center">
-  <img src="assets/hud_preview.png" alt="Мини-панель статуса" width="240"/>
-  <img src="assets/settings_preview.png" alt="Меню настроек" width="460"/>
+  <img src="assets/hud_preview_ru.png" alt="Мини-панель статуса" width="240"/>
+  <img src="assets/settings_preview_ru.png" alt="Меню настроек" width="460"/>
 </p>
 
