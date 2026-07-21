@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include "imgui.h"
+#include "resource.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -27,7 +28,14 @@ inline void CreateTrayIcon(HWND hWnd) {
   g_NotifyIconData.uID = 1;
   g_NotifyIconData.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
   g_NotifyIconData.uCallbackMessage = WM_TRAYICON;
-  g_NotifyIconData.hIcon = LoadIconW(nullptr, (LPCWSTR)IDI_SHIELD);
+
+  HINSTANCE hInstance = GetModuleHandleW(nullptr);
+
+  g_NotifyIconData.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_ICON1));
+
+  if (!g_NotifyIconData.hIcon) {
+    g_NotifyIconData.hIcon = LoadIconW(nullptr, (LPCWSTR)IDI_APPLICATION);
+  }
 
   wcscpy_s(g_NotifyIconData.szTip, L"musml Diablo 4 Tool");
   Shell_NotifyIconW(NIM_ADD, &g_NotifyIconData);
@@ -67,8 +75,8 @@ inline bool CreateDeviceD3D(HWND hWnd) {
   sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
   D3D_FEATURE_LEVEL featureLevel;
-  const D3D_FEATURE_LEVEL featureLevelArray = {D3D_FEATURE_LEVEL_11_0,
-                                               D3D_FEATURE_LEVEL_10_0};
+  const D3D_FEATURE_LEVEL featureLevelArray[] = {D3D_FEATURE_LEVEL_11_0,
+                                                 D3D_FEATURE_LEVEL_10_0};
   HRESULT res = D3D11CreateDeviceAndSwapChain(
       nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, featureLevelArray, 2,
       D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel,
