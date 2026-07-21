@@ -21,3 +21,6 @@ btnPickCoords=Указать точку ХП кликом
 lblSpamList=Список боевых кнопок для спама:
 btnDelete=Удалить
 btnAddKey=Добавить боевую кнопку
+lblShift=Шифт
+lblCtrl=Кнтрл
+lblAlt=Альт

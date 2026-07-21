@@ -10,6 +10,9 @@ struct SpamKey {
     int vKey = '1';
     std::string keyName = "1";
     int delayMs = 50;
+    bool withShift = false;
+    bool withCtrl = false;
+    bool withAlt = false;
     std::chrono::steady_clock::time_point lastPressed;
 };
 
@@ -35,13 +38,27 @@ int settingsHotkey = VK_F5;
 std::string settingsKeyName = "F5";
 int keyToCaptureType = -1;
 
+void PressKeyWithModifiers(WORD wVk, bool shift, bool ctrl, bool alt) {
+    std::vector<INPUT> inputs;
+    INPUT in = { 0 };
+    in.type = INPUT_KEYBOARD;
+
+    if (shift) { in.ki.wVk = VK_SHIFT; in.ki.dwFlags = 0; inputs.push_back(in); }
+    if (ctrl) { in.ki.wVk = VK_CONTROL; in.ki.dwFlags = 0; inputs.push_back(in); }
+    if (alt) { in.ki.wVk = VK_MENU; in.ki.dwFlags = 0; inputs.push_back(in); }
+
+    in.ki.wVk = wVk; in.ki.dwFlags = 0; inputs.push_back(in);
+    in.ki.wVk = wVk; in.ki.dwFlags = KEYEVENTF_KEYUP; inputs.push_back(in);
+
+    if (alt) { in.ki.wVk = VK_MENU; in.ki.dwFlags = KEYEVENTF_KEYUP; inputs.push_back(in); }
+    if (ctrl) { in.ki.wVk = VK_CONTROL; in.ki.dwFlags = KEYEVENTF_KEYUP; inputs.push_back(in); }
+    if (shift) { in.ki.wVk = VK_SHIFT; in.ki.dwFlags = KEYEVENTF_KEYUP; inputs.push_back(in); }
+
+    SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+}
+
 void PressKey(WORD wVk) {
-    INPUT input = { 0 };
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = wVk;
-    SendInput(1, &input, sizeof(INPUT));
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(1, &input, sizeof(INPUT));
+    PressKeyWithModifiers(wVk, false, false, false);
 }
 
 bool IsDiabloActive() {
@@ -79,15 +96,19 @@ void SaveConfig() {
     out << toggleHotkey << " " << toggleKeyName << "\n" << settingsHotkey << " " << settingsKeyName << "\n";
     out << combatMouseTrigger << "\n" << globalHealthCheckEnable << " " << healthVKey << " " << healthKeyName << " " << healthDelayMs << "\n";
     out << healthX << " " << healthY << "\n" << spamKeys.size() << "\n";
-    for (const auto& sk : spamKeys) out << sk.vKey << " " << sk.keyName << " " << sk.delayMs << "\n";
+    for (const auto& sk : spamKeys) {
+        out << sk.vKey << " " << sk.keyName << " " << sk.delayMs << " " << sk.withShift << " " << sk.withCtrl << " " << sk.withAlt << "\n";
+    }
     out.close();
 }
 
 void LoadConfig() {
     std::ifstream in("config.txt");
     if (!in.is_open()) {
-        spamKeys.push_back({ '1', "1", 50 }); spamKeys.push_back({ '2', "2", 50 });
-        spamKeys.push_back({ '3', "3", 50 }); spamKeys.push_back({ '4', "4", 2000 });
+        spamKeys.push_back({ '1', "1", 50, false, false, false });
+        spamKeys.push_back({ '2', "2", 50, false, false, false });
+        spamKeys.push_back({ '3', "3", 50, false, false, false });
+        spamKeys.push_back({ '4', "4", 2000, false, false, false });
         return;
     }
     in >> toggleHotkey >> toggleKeyName >> settingsHotkey >> settingsKeyName >> combatMouseTrigger;
@@ -96,7 +117,8 @@ void LoadConfig() {
     if (in >> size) {
         spamKeys.clear();
         for (size_t i = 0; i < size; ++i) {
-            SpamKey sk; in >> sk.vKey >> sk.keyName >> sk.delayMs;
+            SpamKey sk;
+            in >> sk.vKey >> sk.keyName >> sk.delayMs >> sk.withShift >> sk.withCtrl >> sk.withAlt;
             spamKeys.push_back(sk);
         }
     }
@@ -118,7 +140,10 @@ void CoreMacroLoop() {
             if (isScriptActive && isMouseTriggerPressed) {
                 for (auto& sk : spamKeys) {
                     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - sk.lastPressed).count();
-                    if (elapsed >= sk.delayMs) { PressKey(sk.vKey); sk.lastPressed = now; }
+                    if (elapsed >= sk.delayMs) {
+                        PressKeyWithModifiers(sk.vKey, sk.withShift, sk.withCtrl, sk.withAlt);
+                        sk.lastPressed = now;
+                    }
                 }
             }
         }
@@ -170,44 +195,26 @@ void GlobalHotkeyMonitor() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
-// Структура для хранения всех текстовых элементов интерфейса
+
 struct LocStrings {
-    std::string gameStatus = "Game Status: ";
-    std::string scriptStatus = "Script Status: ";
-    std::string healthStatus = "Health Status: ";
-    std::string options = "Options: ";
-    std::string healthy = "Healthy";
-    std::string lowHp = "Low HP";
-
-    std::string captureCoordsTitle = "HEALTH PIXEL SELECTION MODE:";
-    std::string captureCoordsDesc = "Switch to Diablo 4 and LEFT CLICK on your health sphere...";
-    std::string captureKeyTitle = "KEY CAPTURE MODE:";
-    std::string captureKeyDesc = "Press ANY key on your keyboard or side mouse buttons...";
-
-    std::string settingsTitle = "Overlay Configuration:";
-    std::string btnToggle = "Toggle Script: ";
-    std::string btnSettings = "Open Options: ";
-    std::string combatCondition = "Combat Spam Activation Condition:";
-    std::string radioLmb = "Hold LMB";
-    std::string radioRmb = "Hold RMB";
-    std::string chkGlobalHealth = "Global Auto-Heal by HP pixel";
-    std::string lblHealthKey = "Heal Key: ";
-    std::string lblHealTimer = "Heal Timer (ms)";
-    std::string btnPickCoords = "Pick HP Point with Click";
-    std::string lblSpamList = "Combat Spam Keys List:";
-    std::string btnDelete = "Delete";
-    std::string btnAddKey = "Add Combat Key";
+    std::string gameStatus = "Game Status: "; std::string scriptStatus = "Script Status: "; std::string healthStatus = "Health Status: ";
+    std::string options = "Options: "; std::string healthy = "Healthy"; std::string lowHp = "Low HP";
+    std::string captureCoordsTitle = "HEALTH PIXEL SELECTION MODE:"; std::string captureCoordsDesc = "Switch to Diablo 4 and LEFT CLICK on your health sphere...";
+    std::string captureKeyTitle = "KEY CAPTURE MODE:"; std::string captureKeyDesc = "Press ANY key on your keyboard or side mouse buttons...";
+    std::string settingsTitle = "Overlay Configuration:"; std::string btnToggle = "Toggle Script: "; std::string btnSettings = "Open Options: ";
+    std::string combatCondition = "Combat Spam Activation Condition:"; std::string radioLmb = "Hold LMB"; std::string radioRmb = "Hold RMB";
+    std::string chkGlobalHealth = "Global Auto-Heal by HP pixel"; std::string lblHealthKey = "Heal Key: "; std::string lblHealTimer = "Heal Timer (ms)";
+    std::string btnPickCoords = "Pick HP Point with Click"; std::string lblSpamList = "Combat Spam Keys List:"; std::string btnDelete = "Delete"; std::string btnAddKey = "Add Combat Key";
+    std::string lblShift = "Shift"; std::string lblCtrl = "Ctrl"; std::string lblAlt = "Alt";
 };
-
 LocStrings lang;
 
 void LoadLanguage() {
-    std::string langCode = "en"; // По умолчанию английский
+    std::string langCode = "en";
 
-    // Автоматически запрашиваем язык у Windows
     LANGID langId = GetUserDefaultUILanguage();
     if (PRIMARYLANGID(langId) == LANG_RUSSIAN) {
-        langCode = "ru"; // Если Windows на русском, переключаем
+        langCode = "ru";
     }
 
     std::ifstream in("lang_" + langCode + ".txt");
@@ -245,6 +252,9 @@ void LoadLanguage() {
         else if (key == "lblSpamList") lang.lblSpamList = val;
         else if (key == "btnDelete") lang.btnDelete = val;
         else if (key == "btnAddKey") lang.btnAddKey = val;
+        else if (key == "lblShift") lang.lblShift = val;
+        else if (key == "lblCtrl") lang.lblCtrl = val;
+        else if (key == "lblAlt") lang.lblAlt = val;
     }
     in.close();
 }

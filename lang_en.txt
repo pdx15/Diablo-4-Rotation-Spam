@@ -21,3 +21,6 @@ btnPickCoords=Pick HP Point with Click
 lblSpamList=Combat Spam Keys List:
 btnDelete=Delete
 btnAddKey=Add Combat Key
+lblShift=Shift
+lblCtrl=Ctrl
+lblAlt=Alt

@@ -11,12 +11,13 @@
 #include "imgui_impl_dx11.h"
 #include "overlay_utils.h"
 
-struct SpamKey { int vKey; std::string keyName; int delayMs; std::chrono::steady_clock::time_point lastPressed; };
+struct SpamKey { int vKey; std::string keyName; int delayMs; bool withShift; bool withCtrl; bool withAlt; std::chrono::steady_clock::time_point lastPressed; };
 struct LocStrings {
     std::string gameStatus, scriptStatus, healthStatus, options, healthy, lowHp;
     std::string captureCoordsTitle, captureCoordsDesc, captureKeyTitle, captureKeyDesc;
     std::string settingsTitle, btnToggle, btnSettings, combatCondition, radioLmb, radioRmb;
     std::string chkGlobalHealth, lblHealthKey, lblHealTimer, btnPickCoords, lblSpamList, btnDelete, btnAddKey;
+    std::string lblShift, lblCtrl, lblAlt;
 };
 
 extern LocStrings lang;
@@ -36,15 +37,13 @@ IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    LoadLanguage(); // Теперь язык определяется автоматически на основе вашей Windows
-    LoadConfig();
-
+    LoadLanguage(); LoadConfig();
     std::thread(CoreMacroLoop).detach(); std::thread(GlobalHotkeyMonitor).detach();
 
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, hInstance, nullptr, nullptr, nullptr, nullptr, L"OverlayClass", nullptr };
     RegisterClassExW(&wc);
 
-    HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, L"OverlayClass", L"musml Overlay", WS_POPUP, 50, 50, 750, 400, nullptr, nullptr, hInstance, nullptr);
+    HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, L"OverlayClass", L"musml Overlay", WS_POPUP, 50, 50, 780, 440, nullptr, nullptr, hInstance, nullptr);
     SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 
     if (!CreateDeviceD3D(hwnd)) { CleanupDeviceD3D(); UnregisterClassW(L"OverlayClass", hInstance); return 1; }
@@ -53,13 +52,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     IMGUI_CHECKVERSION(); ImGui::CreateContext(); ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle(); style.WindowBorderSize = 1.0f; style.WindowRounding = 0.0f;
 
-    // --- ПОДКЛЮЧЕНИЕ РУССКОГО ШРИФТА ДЛЯ IMGUI ---
-    ImGuiIO& io = ImGui::GetIO();
-    char winFolder[MAX_PATH];
-    GetWindowsDirectoryA(winFolder, MAX_PATH);
-    std::string fontPath = std::string(winFolder) + "\\Fonts\\Arial.ttf"; // Берем стандартный шрифт Windows
-
-    // Загружаем шрифт и принудительно указываем диапазон кириллицы (GetGlyphRangesCyrillic)
+    ImGuiIO& io = ImGui::GetIO(); char winFolder[MAX_PATH]; GetWindowsDirectoryA(winFolder, MAX_PATH);
+    std::string fontPath = std::string(winFolder) + "\\Fonts\\Arial.ttf";
     io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 16.0f, nullptr, io.Fonts->GetGlyphRangesCyrillic());
 
     ImGui_ImplWin32_Init(hwnd); ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
@@ -103,19 +97,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ImGui::End();
 
         if (isCapturingCoordinates) {
-            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(460, 100), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(500, 100), ImGuiCond_Always);
             ImGui::Begin("Capture Coords", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), lang.captureCoordsTitle.c_str());
             ImGui::Text(lang.captureCoordsDesc.c_str()); ImGui::End();
         }
         else if (isCapturing) {
-            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(460, 100), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(500, 100), ImGuiCond_Always);
             ImGui::Begin("Capture Key", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), lang.captureKeyTitle.c_str());
             ImGui::Text(lang.captureKeyDesc.c_str()); ImGui::End();
         }
         else if (showSettingsWindow) {
-            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(460, 360), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always); ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_Always);
             ImGui::Begin("Settings Panel", &showSettingsWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
             ImGui::Text(lang.settingsTitle.c_str());
@@ -143,12 +137,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             ImGui::Separator(); ImGui::Text(lang.lblSpamList.c_str());
             for (size_t i = 0; i < spamKeys.size(); i++) {
                 ImGui::PushID(static_cast<int>(i));
-                if (ImGui::Button(("[" + spamKeys[i].keyName + "]##btn").c_str(), ImVec2(80, 0))) { isCapturing = true; keyToCaptureType = static_cast<int>(3 + i); } ImGui::SameLine();
-                ImGui::PushItemWidth(80); if (ImGui::InputInt("мс##del", &spamKeys[i].delayMs, 0, 0)) { if (spamKeys[i].delayMs < 1) spamKeys[i].delayMs = 1; SaveConfig(); } ImGui::PopItemWidth(); ImGui::SameLine();
-                if (ImGui::Button(lang.btnDelete.c_str())) { spamKeys.erase(spamKeys.begin() + i); SaveConfig(); ImGui::PopID(); break; }
+                if (ImGui::Button(("[" + spamKeys[i].keyName + "]##btn").c_str(), ImVec2(65, 0))) { isCapturing = true; keyToCaptureType = static_cast<int>(3 + i); } ImGui::SameLine();
+                ImGui::PushItemWidth(65); if (ImGui::InputInt("мс##del", &spamKeys[i].delayMs, 0, 0)) { if (spamKeys[i].delayMs < 1) spamKeys[i].delayMs = 1; SaveConfig(); } ImGui::PopItemWidth(); ImGui::SameLine();
+
+                if (ImGui::Checkbox(lang.lblShift.c_str(), &spamKeys[i].withShift)) SaveConfig(); ImGui::SameLine();
+                if (ImGui::Checkbox(lang.lblCtrl.c_str(), &spamKeys[i].withCtrl)) SaveConfig(); ImGui::SameLine();
+                if (ImGui::Checkbox(lang.lblAlt.c_str(), &spamKeys[i].withAlt)) SaveConfig(); ImGui::SameLine();
+
+                if (ImGui::Button("X")) { spamKeys.erase(spamKeys.begin() + i); SaveConfig(); ImGui::PopID(); break; }
                 ImGui::PopID();
             }
-            if (ImGui::Button(lang.btnAddKey.c_str())) { spamKeys.push_back({ '1', "1", 100 }); SaveConfig(); }
+            if (ImGui::Button(lang.btnAddKey.c_str())) { spamKeys.push_back({ '1', "1", 100, false, false, false }); SaveConfig(); }
             ImGui::End();
         }
 
