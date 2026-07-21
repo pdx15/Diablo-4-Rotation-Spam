@@ -2,6 +2,9 @@
 
 [English](#english) | [Русский](#русский)
 
+Latest version for Windows/Последняя версия для Windows
+https://github.com/pdx15/Diablo-4-Rotation-Spam/releases/latest
+
 ---
 
 ## English
