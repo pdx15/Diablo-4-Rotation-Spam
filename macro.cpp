@@ -39,18 +39,6 @@ int settingsHotkey = VK_F5;
 std::string settingsKeyName = "F5";
 int keyToCaptureType = -1;
 
-std::string GetKeyNameFromVK(int vk) {
-  if (vk == VK_XBUTTON1) return "Mouse4";
-  if (vk == VK_XBUTTON2) return "Mouse5";
-  if (vk == VK_LBUTTON) return "LButton";
-  if (vk == VK_RBUTTON) return "RButton";
-  char name[64] = {0};
-  UINT scanCode = MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
-  LONG lParam = scanCode << 16;
-  if (GetKeyNameTextA(lParam, name, 64) > 0) return std::string(name);
-  return "Unknown";
-}
-
 void PressKeyWithModifiers(WORD wVk, bool shift, bool ctrl, bool alt) {
   std::vector<INPUT> inputs;
   INPUT in = {0};
@@ -107,35 +95,28 @@ bool IsDiabloActive() {
   GetClassNameW(hwnd, className, 256);
   return (wcscmp(className, L"Diablo IV Main Window Class") == 0);
 }
-double GetHealthyPixelsRatio(int centerX, int centerY, COLORREF targetColor,
-                             int tolerance) {
+
+bool CheckPixelColor(int x, int y, COLORREF targetColor, int tolerance) {
   HDC hdcScreen = GetDC(NULL);
-  if (!hdcScreen) return 0.0;
-
-  int healthyCount = 0;
-  int totalCount = 0;
-  int radius = 3;
-
+  COLORREF color = GetPixel(hdcScreen, x, y);
+  ReleaseDC(NULL, hdcScreen);
+  int r1 = GetRValue(color), g1 = GetGValue(color), b1 = GetBValue(color);
   int r2 = GetRValue(targetColor), g2 = GetGValue(targetColor),
       b2 = GetBValue(targetColor);
+  return (abs(r1 - r2) <= tolerance && abs(g1 - g2) <= tolerance &&
+          abs(b1 - b2) <= tolerance);
+}
 
-  for (int y = centerY - radius; y <= centerY + radius; ++y) {
-    for (int x = centerX - radius; x <= centerX + radius; ++x) {
-      COLORREF color = GetPixel(hdcScreen, x, y);
-      if (color == CLR_INVALID) continue;
-
-      int r1 = GetRValue(color), g1 = GetGValue(color), b1 = GetBValue(color);
-      if (abs(r1 - r2) <= tolerance && abs(g1 - g2) <= tolerance &&
-          abs(b1 - b2) <= tolerance) {
-        healthyCount++;
-      }
-      totalCount++;
-    }
-  }
-  ReleaseDC(NULL, hdcScreen);
-
-  if (totalCount == 0) return 0.0;
-  return static_cast<double>(healthyCount) / totalCount;
+std::string GetKeyNameFromVK(int vk) {
+  if (vk == VK_XBUTTON1) return "Mouse4";
+  if (vk == VK_XBUTTON2) return "Mouse5";
+  if (vk == VK_LBUTTON) return "LButton";
+  if (vk == VK_RBUTTON) return "RButton";
+  char name[64] = {0};
+  UINT scanCode = MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
+  LONG lParam = scanCode << 16;
+  if (GetKeyNameTextA(lParam, name, 64) > 0) return std::string(name);
+  return "Unknown";
 }
 
 void SaveConfig() {
@@ -183,15 +164,7 @@ void LoadConfig() {
 void CoreMacroLoop() {
   while (true) {
     if (IsDiabloActive()) {
-      double healthyRatio =
-          GetHealthyPixelsRatio(healthX, healthY, RGB(0x9E, 0x30, 0x38), 50);
-
-      if (healthyRatio > 0.0) {
-        isHealthy = true;
-      } else {
-        isHealthy = false;
-      }
-
+      isHealthy = CheckPixelColor(healthX, healthY, RGB(0x9E, 0x30, 0x38), 50);
       auto now = std::chrono::steady_clock::now();
       int currentMouseKey = (combatMouseTrigger == 0) ? VK_LBUTTON : VK_RBUTTON;
       bool isMouseTriggerPressed =
@@ -283,11 +256,6 @@ void GlobalHotkeyMonitor() {
         showSettingsWindow = !showSettingsWindow;
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
       }
-      if (GetAsyncKeyState(VK_F9) & 0x8000) {
-        Beep(220, 300);
-        PostQuitMessage(0);
-        ExitProcess(0);
-      }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
@@ -327,19 +295,24 @@ LocStrings lang;
 
 void LoadLanguage() {
   std::string langCode = "en";
+
   LANGID langId = GetUserDefaultUILanguage();
   if (PRIMARYLANGID(langId) == LANG_RUSSIAN) {
     langCode = "ru";
   }
+
   std::ifstream in("lang_" + langCode + ".txt");
   if (!in.is_open()) return;
+
   std::string line;
   while (std::getline(in, line)) {
     if (line.empty() || line[0] == '#') continue;
     std::size_t sep = line.find('=');
     if (sep == std::string::npos) continue;
+
     std::string key = line.substr(0, sep);
     std::string val = line.substr(sep + 1);
+
     if (key == "gameStatus")
       lang.gameStatus = val;
     else if (key == "scriptStatus")
