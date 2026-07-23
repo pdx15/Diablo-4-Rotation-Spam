@@ -1,6 +1,6 @@
-//{{NO_DEPENDENCIES}}
-// Включаемый файл, созданный в Microsoft Visual C++.
-// Используется Resource.rc
+п»ї//{{NO_DEPENDENCIES}}
+// Р’РєР»СЋС‡Р°РµРјС‹Р№ С„Р°Р№Р», СЃРѕР·РґР°РЅРЅС‹Р№ РІ Microsoft Visual C++.
+// РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ Resource.rc
 //
 #define IDI_ICON1 101
 #define IDR_LANG_EN 102

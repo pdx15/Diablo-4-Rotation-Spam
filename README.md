@@ -1,4 +1,4 @@
-# Diablo 4 Overlay Rotation Spam
+﻿# Diablo 4 Overlay Rotation Spam
 
 [English](#english) | [Русский](#русский)
 

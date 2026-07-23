@@ -41,6 +41,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="app_state.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
     <ClInclude Include="imgui.h">
       <Filter>Исходные файлы</Filter>
     </ClInclude>

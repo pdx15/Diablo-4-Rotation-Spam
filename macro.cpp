@@ -1,30 +1,33 @@
 #include <windows.h>
 
+#include "app_state.h"
 #include "resource.h"
 
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
-
-struct SpamKey {
-  int vKey = '1';
-  std::string keyName = "1";
-  int delayMs = 50;
-  bool withShift = false;
-  bool withCtrl = false;
-  bool withAlt = false;
-  std::chrono::steady_clock::time_point lastPressed;
-};
 
 std::atomic<bool> isScriptActive(false);
 std::atomic<bool> isHealthy(true);
 bool showSettingsWindow = false;
 bool isCapturing = false;
 bool isCapturingCoordinates = false;
+std::recursive_mutex settingsMutex;
 
 std::vector<SpamKey> spamKeys;
 int combatMouseTrigger = 1;
@@ -33,6 +36,8 @@ int healthVKey = 'Q';
 std::string healthKeyName = "Q";
 int healthDelayMs = 50;
 std::chrono::steady_clock::time_point lastHealthPressed;
+std::vector<ProfileConfig> profiles;
+int activeProfileIndex = 0;
 
 int healthX = 960;
 int healthY = 1010;
@@ -41,6 +46,16 @@ std::string toggleKeyName = "Mouse5";
 int settingsHotkey = VK_F5;
 std::string settingsKeyName = "F5";
 int keyToCaptureType = -1;
+
+struct MacroSettingsSnapshot {
+  int combatMouseTrigger = 1;
+  bool globalHealthCheckEnable = true;
+  int healthVKey = 'Q';
+  int healthDelayMs = 50;
+  int healthX = 960;
+  int healthY = 1010;
+  std::vector<SpamKey> spamKeys;
+};
 
 std::string GetKeyNameFromVK(int vk) {
   if (vk == VK_XBUTTON1) return "Mouse4";
@@ -141,53 +156,394 @@ double GetHealthyPixelsRatio(int centerX, int centerY, COLORREF targetColor,
   return static_cast<double>(healthyCount) / totalCount;
 }
 
-void SaveConfig() {
-  std::ofstream out("config.txt");
-  if (!out.is_open()) return;
-  out << toggleHotkey << " " << toggleKeyName << "\n"
-      << settingsHotkey << " " << settingsKeyName << "\n";
-  out << combatMouseTrigger << "\n"
-      << globalHealthCheckEnable << " " << healthVKey << " " << healthKeyName
-      << " " << healthDelayMs << "\n";
-  out << healthX << " " << healthY << "\n" << spamKeys.size() << "\n";
-  for (const auto& sk : spamKeys) {
-    out << sk.vKey << " " << sk.keyName << " " << sk.delayMs << " "
-        << sk.withShift << " " << sk.withCtrl << " " << sk.withAlt << "\n";
-  }
-  out.close();
+MacroSettingsSnapshot GetMacroSettingsSnapshot() {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+  return {combatMouseTrigger,
+          globalHealthCheckEnable,
+          healthVKey,
+          healthDelayMs,
+          healthX,
+          healthY,
+          spamKeys};
 }
 
-void LoadConfig() {
-  std::ifstream in("config.txt");
-  if (!in.is_open()) {
-    spamKeys.push_back({'1', "1", 50, false, false, false});
-    spamKeys.push_back({'2', "2", 50, false, false, false});
-    spamKeys.push_back({'3', "3", 50, false, false, false});
-    spamKeys.push_back({'4', "4", 2000, false, false, false});
-    return;
+std::vector<SpamKey> MakeDefaultSpamKeys() {
+  return {{'1', "1", 50, false, false, false},
+          {'2', "2", 50, false, false, false},
+          {'3', "3", 50, false, false, false},
+          {'4', "4", 2000, false, false, false}};
+}
+
+std::string Trim(const std::string& text) {
+  size_t first = 0;
+  while (first < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[first]))) {
+    first++;
   }
-  in >> toggleHotkey >> toggleKeyName >> settingsHotkey >> settingsKeyName >>
-      combatMouseTrigger;
-  in >> globalHealthCheckEnable >> healthVKey >> healthKeyName >>
-      healthDelayMs >> healthX >> healthY;
+
+  size_t last = text.size();
+  while (last > first &&
+         std::isspace(static_cast<unsigned char>(text[last - 1]))) {
+    last--;
+  }
+
+  return text.substr(first, last - first);
+}
+
+bool TryReadInt(const std::unordered_map<std::string, std::string>& values,
+                const std::string& key, int& out) {
+  auto it = values.find(key);
+  if (it == values.end()) return false;
+
+  try {
+    size_t parsed = 0;
+    int value = std::stoi(Trim(it->second), &parsed);
+    if (parsed != Trim(it->second).size()) return false;
+    out = value;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+int ReadInt(const std::unordered_map<std::string, std::string>& values,
+            const std::string& key, int fallback, int minValue,
+            int maxValue) {
+  int value = fallback;
+  TryReadInt(values, key, value);
+  return std::clamp(value, minValue, maxValue);
+}
+
+bool ReadBool(const std::unordered_map<std::string, std::string>& values,
+              const std::string& key, bool fallback) {
+  auto it = values.find(key);
+  if (it == values.end()) return fallback;
+
+  std::string value = Trim(it->second);
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (value == "1" || value == "true" || value == "yes" || value == "on")
+    return true;
+  if (value == "0" || value == "false" || value == "no" || value == "off")
+    return false;
+  return fallback;
+}
+
+std::string ReadString(const std::unordered_map<std::string, std::string>& values,
+                       const std::string& key,
+                       const std::string& fallback) {
+  auto it = values.find(key);
+  if (it == values.end()) return fallback;
+
+  std::string value = Trim(it->second);
+  return value.empty() ? fallback : value;
+}
+
+bool LoadKeyValueConfig(std::unordered_map<std::string, std::string>& values) {
+  std::ifstream in("config.txt");
+  if (!in.is_open()) return false;
+
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.size() >= 3 &&
+        static_cast<unsigned char>(line[0]) == 0xEF &&
+        static_cast<unsigned char>(line[1]) == 0xBB &&
+        static_cast<unsigned char>(line[2]) == 0xBF) {
+      line.erase(0, 3);
+    }
+
+    line = Trim(line);
+    if (line.empty() || line[0] == '#') continue;
+
+    size_t sep = line.find('=');
+    if (sep == std::string::npos) continue;
+
+    std::string key = Trim(line.substr(0, sep));
+    std::string value = Trim(line.substr(sep + 1));
+    if (!key.empty()) values[key] = value;
+  }
+
+  return !values.empty();
+}
+
+ProfileConfig MakeProfileFromGlobals(const std::string& name) {
+  ProfileConfig profile;
+  profile.name = name;
+  profile.combatMouseTrigger = combatMouseTrigger;
+  profile.globalHealthCheckEnable = globalHealthCheckEnable;
+  profile.healthVKey = healthVKey;
+  profile.healthKeyName = healthKeyName;
+  profile.healthDelayMs = healthDelayMs;
+  profile.healthX = healthX;
+  profile.healthY = healthY;
+  profile.spamKeys = spamKeys;
+  return profile;
+}
+
+void ApplyProfileToGlobals(const ProfileConfig& profile) {
+  combatMouseTrigger = profile.combatMouseTrigger;
+  globalHealthCheckEnable = profile.globalHealthCheckEnable;
+  healthVKey = profile.healthVKey;
+  healthKeyName = profile.healthKeyName;
+  healthDelayMs = profile.healthDelayMs;
+  healthX = profile.healthX;
+  healthY = profile.healthY;
+  spamKeys = profile.spamKeys;
+}
+
+void StoreGlobalsInActiveProfile() {
+  if (profiles.empty()) return;
+  activeProfileIndex =
+      std::clamp(activeProfileIndex, 0, static_cast<int>(profiles.size()) - 1);
+  profiles[activeProfileIndex] =
+      MakeProfileFromGlobals(profiles[activeProfileIndex].name);
+}
+
+void ResetToDefaultConfig() {
+  toggleHotkey = VK_XBUTTON2;
+  toggleKeyName = "Mouse5";
+  settingsHotkey = VK_F5;
+  settingsKeyName = "F5";
+  combatMouseTrigger = 1;
+  globalHealthCheckEnable = true;
+  healthVKey = 'Q';
+  healthKeyName = "Q";
+  healthDelayMs = 50;
+  healthX = 960;
+  healthY = 1010;
+  spamKeys = MakeDefaultSpamKeys();
+  profiles.clear();
+  profiles.push_back(MakeProfileFromGlobals("Default"));
+  activeProfileIndex = 0;
+}
+
+void SaveConfig() {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+
+  if (profiles.empty()) {
+    profiles.push_back(MakeProfileFromGlobals("Default"));
+    activeProfileIndex = 0;
+  }
+  StoreGlobalsInActiveProfile();
+
+  std::ofstream out("config.txt", std::ios::trunc);
+  if (!out.is_open()) return;
+
+  out << "version=2\n";
+  out << "activeProfile=" << activeProfileIndex << "\n";
+  out << "toggleHotkey=" << toggleHotkey << "\n";
+  out << "toggleKeyName=" << toggleKeyName << "\n";
+  out << "settingsHotkey=" << settingsHotkey << "\n";
+  out << "settingsKeyName=" << settingsKeyName << "\n";
+  out << "profileCount=" << profiles.size() << "\n";
+
+  for (size_t i = 0; i < profiles.size(); ++i) {
+    const ProfileConfig& profile = profiles[i];
+    std::string prefix = "profile." + std::to_string(i) + ".";
+    out << prefix << "name=" << profile.name << "\n";
+    out << prefix << "combatMouseTrigger=" << profile.combatMouseTrigger
+        << "\n";
+    out << prefix << "globalHealthCheckEnable="
+        << profile.globalHealthCheckEnable << "\n";
+    out << prefix << "healthVKey=" << profile.healthVKey << "\n";
+    out << prefix << "healthKeyName=" << profile.healthKeyName << "\n";
+    out << prefix << "healthDelayMs=" << profile.healthDelayMs << "\n";
+    out << prefix << "healthX=" << profile.healthX << "\n";
+    out << prefix << "healthY=" << profile.healthY << "\n";
+    out << prefix << "spamCount=" << profile.spamKeys.size() << "\n";
+
+    for (size_t j = 0; j < profile.spamKeys.size(); ++j) {
+      const SpamKey& sk = profile.spamKeys[j];
+      std::string spamPrefix =
+          prefix + "spam." + std::to_string(j) + ".";
+      out << spamPrefix << "vKey=" << sk.vKey << "\n";
+      out << spamPrefix << "keyName=" << sk.keyName << "\n";
+      out << spamPrefix << "delayMs=" << sk.delayMs << "\n";
+      out << spamPrefix << "withShift=" << sk.withShift << "\n";
+      out << spamPrefix << "withCtrl=" << sk.withCtrl << "\n";
+      out << spamPrefix << "withAlt=" << sk.withAlt << "\n";
+    }
+  }
+}
+
+bool LoadLegacyConfig() {
+  std::ifstream in("config.txt");
+  if (!in.is_open()) return false;
+
+  if (!(in >> toggleHotkey >> toggleKeyName >> settingsHotkey >>
+        settingsKeyName >> combatMouseTrigger)) {
+    return false;
+  }
+  if (!(in >> globalHealthCheckEnable >> healthVKey >> healthKeyName >>
+        healthDelayMs >> healthX >> healthY)) {
+    return false;
+  }
+
   size_t size = 0;
   if (in >> size) {
+    size = std::min<size_t>(size, 64);
     spamKeys.clear();
     for (size_t i = 0; i < size; ++i) {
       SpamKey sk;
-      in >> sk.vKey >> sk.keyName >> sk.delayMs >> sk.withShift >>
-          sk.withCtrl >> sk.withAlt;
+      if (!(in >> sk.vKey >> sk.keyName >> sk.delayMs >> sk.withShift >>
+            sk.withCtrl >> sk.withAlt)) {
+        return false;
+      }
+      sk.delayMs = std::max(sk.delayMs, 1);
       spamKeys.push_back(sk);
     }
   }
-  in.close();
+
+  if (spamKeys.empty()) spamKeys = MakeDefaultSpamKeys();
+  profiles.clear();
+  profiles.push_back(MakeProfileFromGlobals("Default"));
+  activeProfileIndex = 0;
+  return true;
+}
+
+bool LoadModernConfig() {
+  std::unordered_map<std::string, std::string> values;
+  if (!LoadKeyValueConfig(values)) return false;
+  if (values.find("version") == values.end() ||
+      values.find("profileCount") == values.end()) {
+    return false;
+  }
+
+  toggleHotkey = ReadInt(values, "toggleHotkey", VK_XBUTTON2, 1, 255);
+  toggleKeyName = ReadString(values, "toggleKeyName", "Mouse5");
+  settingsHotkey = ReadInt(values, "settingsHotkey", VK_F5, 1, 255);
+  settingsKeyName = ReadString(values, "settingsKeyName", "F5");
+
+  int profileCount = ReadInt(values, "profileCount", 1, 1, 16);
+  profiles.clear();
+
+  for (int i = 0; i < profileCount; ++i) {
+    std::string prefix = "profile." + std::to_string(i) + ".";
+    ProfileConfig profile;
+    profile.name =
+        ReadString(values, prefix + "name", "Profile " + std::to_string(i + 1));
+    profile.combatMouseTrigger =
+        ReadInt(values, prefix + "combatMouseTrigger", 1, 0, 1);
+    profile.globalHealthCheckEnable =
+        ReadBool(values, prefix + "globalHealthCheckEnable", true);
+    profile.healthVKey = ReadInt(values, prefix + "healthVKey", 'Q', 1, 255);
+    profile.healthKeyName = ReadString(values, prefix + "healthKeyName", "Q");
+    profile.healthDelayMs =
+        ReadInt(values, prefix + "healthDelayMs", 50, 1, 600000);
+    profile.healthX = ReadInt(values, prefix + "healthX", 960, -32000, 32000);
+    profile.healthY = ReadInt(values, prefix + "healthY", 1010, -32000, 32000);
+
+    int spamCount = ReadInt(values, prefix + "spamCount", 0, 0, 64);
+    for (int j = 0; j < spamCount; ++j) {
+      std::string spamPrefix = prefix + "spam." + std::to_string(j) + ".";
+      SpamKey sk;
+      sk.vKey = ReadInt(values, spamPrefix + "vKey", '1', 1, 255);
+      sk.keyName = ReadString(values, spamPrefix + "keyName", "1");
+      sk.delayMs = ReadInt(values, spamPrefix + "delayMs", 50, 1, 600000);
+      sk.withShift = ReadBool(values, spamPrefix + "withShift", false);
+      sk.withCtrl = ReadBool(values, spamPrefix + "withCtrl", false);
+      sk.withAlt = ReadBool(values, spamPrefix + "withAlt", false);
+      profile.spamKeys.push_back(sk);
+    }
+
+    profiles.push_back(profile);
+  }
+
+  if (profiles.empty()) profiles.push_back(ProfileConfig{});
+  activeProfileIndex =
+      ReadInt(values, "activeProfile", 0, 0, static_cast<int>(profiles.size()) - 1);
+  ApplyProfileToGlobals(profiles[activeProfileIndex]);
+  return true;
+}
+
+void LoadConfig() {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+
+  if (LoadModernConfig()) return;
+
+  if (LoadLegacyConfig()) {
+    SaveConfig();
+    return;
+  }
+
+  ResetToDefaultConfig();
+}
+
+std::string MakeUniqueProfileName() {
+  for (int i = 1; i <= 16; ++i) {
+    std::string name = "Profile " + std::to_string(i);
+    bool exists = false;
+    for (const ProfileConfig& profile : profiles) {
+      if (profile.name == name) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) return name;
+  }
+
+  return "Profile";
+}
+
+void SelectProfile(int profileIndex) {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+
+  if (profiles.empty()) {
+    ResetToDefaultConfig();
+    SaveConfig();
+    return;
+  }
+
+  profileIndex =
+      std::clamp(profileIndex, 0, static_cast<int>(profiles.size()) - 1);
+  if (profileIndex == activeProfileIndex) return;
+
+  StoreGlobalsInActiveProfile();
+  activeProfileIndex = profileIndex;
+  ApplyProfileToGlobals(profiles[activeProfileIndex]);
+  SaveConfig();
+}
+
+void AddProfile() {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+
+  if (profiles.empty()) ResetToDefaultConfig();
+  if (profiles.size() >= 16) return;
+
+  StoreGlobalsInActiveProfile();
+  ProfileConfig profile = profiles[activeProfileIndex];
+  profile.name = MakeUniqueProfileName();
+  profiles.push_back(profile);
+  activeProfileIndex = static_cast<int>(profiles.size()) - 1;
+  ApplyProfileToGlobals(profiles[activeProfileIndex]);
+  SaveConfig();
+}
+
+void DeleteActiveProfile() {
+  std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+
+  if (profiles.size() <= 1) return;
+
+  activeProfileIndex =
+      std::clamp(activeProfileIndex, 0, static_cast<int>(profiles.size()) - 1);
+  profiles.erase(profiles.begin() + activeProfileIndex);
+  activeProfileIndex =
+      std::clamp(activeProfileIndex, 0, static_cast<int>(profiles.size()) - 1);
+  ApplyProfileToGlobals(profiles[activeProfileIndex]);
+  SaveConfig();
 }
 
 void CoreMacroLoop() {
+  std::vector<std::chrono::steady_clock::time_point> spamLastPressed;
+  auto lastHealthPressed = std::chrono::steady_clock::time_point{};
+
   while (true) {
     if (IsDiabloActive()) {
+      MacroSettingsSnapshot settings = GetMacroSettingsSnapshot();
       double healthyRatio =
-          GetHealthyPixelsRatio(healthX, healthY, RGB(0x9E, 0x30, 0x38), 50);
+          GetHealthyPixelsRatio(settings.healthX, settings.healthY,
+                                RGB(0x9E, 0x30, 0x38), 50);
 
       if (healthyRatio > 0.0) {
         isHealthy = true;
@@ -196,30 +552,37 @@ void CoreMacroLoop() {
       }
 
       auto now = std::chrono::steady_clock::now();
-      int currentMouseKey = (combatMouseTrigger == 0) ? VK_LBUTTON : VK_RBUTTON;
+      int currentMouseKey =
+          (settings.combatMouseTrigger == 0) ? VK_LBUTTON : VK_RBUTTON;
       bool isMouseTriggerPressed =
           (GetAsyncKeyState(currentMouseKey) & 0x8000) != 0;
 
-      if (globalHealthCheckEnable && !isHealthy && isScriptActive &&
+      if (settings.globalHealthCheckEnable && !isHealthy && isScriptActive &&
           isMouseTriggerPressed) {
         auto elapsedHealth =
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 now - lastHealthPressed)
                 .count();
-        if (elapsedHealth >= healthDelayMs) {
-          PressKey(healthVKey);
+        if (elapsedHealth >= settings.healthDelayMs) {
+          PressKey(settings.healthVKey);
           lastHealthPressed = now;
         }
       }
+
+      if (spamLastPressed.size() != settings.spamKeys.size()) {
+        spamLastPressed.resize(settings.spamKeys.size());
+      }
+
       if (isScriptActive && isMouseTriggerPressed) {
-        for (auto& sk : spamKeys) {
+        for (size_t i = 0; i < settings.spamKeys.size(); ++i) {
+          const SpamKey& sk = settings.spamKeys[i];
           auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                             now - sk.lastPressed)
+                             now - spamLastPressed[i])
                              .count();
           if (elapsed >= sk.delayMs) {
             PressKeyWithModifiers(sk.vKey, sk.withShift, sk.withCtrl,
                                   sk.withAlt);
-            sk.lastPressed = now;
+            spamLastPressed[i] = now;
           }
         }
       }
@@ -232,58 +595,83 @@ void CoreMacroLoop() {
 
 void GlobalHotkeyMonitor() {
   while (true) {
-    if (isCapturingCoordinates) {
+    bool capturingCoordinates = false;
+    bool capturingKey = false;
+    int captureType = -1;
+    int currentToggleHotkey = VK_XBUTTON2;
+    int currentSettingsHotkey = VK_F5;
+
+    {
+      std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+      capturingCoordinates = isCapturingCoordinates;
+      capturingKey = isCapturing;
+      captureType = keyToCaptureType;
+      currentToggleHotkey = toggleHotkey;
+      currentSettingsHotkey = settingsHotkey;
+    }
+
+    if (capturingCoordinates) {
       if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
         POINT p;
         if (GetCursorPos(&p)) {
           HWND diabloHwnd =
               FindWindowW(L"Diablo IV Main Window Class", nullptr);
           if (diabloHwnd) ScreenToClient(diabloHwnd, &p);
-          healthX = p.x;
-          healthY = p.y;
+          {
+            std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+            healthX = p.x;
+            healthY = p.y;
+            isCapturingCoordinates = false;
+            SaveConfig();
+          }
         }
-        isCapturingCoordinates = false;
-        SaveConfig();
         Beep(800, 150);
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
       }
-    } else if (isCapturing) {
+    } else if (capturingKey) {
       for (int vk = 1; vk < 256; vk++) {
         if (vk == VK_LBUTTON || vk == VK_RBUTTON) continue;
         if (GetAsyncKeyState(vk) & 0x8000) {
           std::string name = GetKeyNameFromVK(vk);
-          if (keyToCaptureType == 0) {
-            toggleHotkey = vk;
-            toggleKeyName = name;
-          } else if (keyToCaptureType == 1) {
-            settingsHotkey = vk;
-            settingsKeyName = name;
-          } else if (keyToCaptureType == 2) {
-            healthVKey = vk;
-            healthKeyName = name;
-          } else if (keyToCaptureType >= 3) {
-            size_t idx = keyToCaptureType - 3;
-            if (idx < spamKeys.size()) {
-              spamKeys[idx].vKey = vk;
-              spamKeys[idx].keyName = name;
+          {
+            std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+            captureType = keyToCaptureType;
+            if (captureType == 0) {
+              toggleHotkey = vk;
+              toggleKeyName = name;
+            } else if (captureType == 1) {
+              settingsHotkey = vk;
+              settingsKeyName = name;
+            } else if (captureType == 2) {
+              healthVKey = vk;
+              healthKeyName = name;
+            } else if (captureType >= 3) {
+              size_t idx = captureType - 3;
+              if (idx < spamKeys.size()) {
+                spamKeys[idx].vKey = vk;
+                spamKeys[idx].keyName = name;
+              }
             }
+            isCapturing = false;
+            keyToCaptureType = -1;
+            SaveConfig();
           }
-          isCapturing = false;
-          keyToCaptureType = -1;
-          SaveConfig();
           Beep(600, 100);
           std::this_thread::sleep_for(std::chrono::milliseconds(400));
           break;
         }
       }
     } else {
-      if (GetAsyncKeyState(toggleHotkey) & 0x8000) {
+      if (GetAsyncKeyState(currentToggleHotkey) & 0x8000) {
         isScriptActive = !isScriptActive;
         Beep(isScriptActive ? 440 : 220, 150);
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
       }
-      if (GetAsyncKeyState(settingsHotkey) & 0x8000) {
-        showSettingsWindow = !showSettingsWindow;
+      if (GetAsyncKeyState(currentSettingsHotkey) & 0x8000) {
+        {
+          std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+          showSettingsWindow = !showSettingsWindow;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
       }
       if (GetAsyncKeyState(VK_F9) & 0x8000) {
@@ -296,36 +684,6 @@ void GlobalHotkeyMonitor() {
   }
 }
 
-struct LocStrings {
-  std::string gameStatus = "Game Status: ";
-  std::string scriptStatus = "Script Status: ";
-  std::string healthStatus = "Health Status: ";
-  std::string options = "Options: ";
-  std::string healthy = "Healthy";
-  std::string lowHp = "Low HP";
-  std::string captureCoordsTitle = "HEALTH PIXEL SELECTION MODE:";
-  std::string captureCoordsDesc =
-      "Switch to Diablo 4 and LEFT CLICK on your health sphere...";
-  std::string captureKeyTitle = "KEY CAPTURE MODE:";
-  std::string captureKeyDesc =
-      "Press ANY key on your keyboard or side mouse buttons...";
-  std::string settingsTitle = "Overlay Configuration:";
-  std::string btnToggle = "Toggle Script: ";
-  std::string btnSettings = "Open Options: ";
-  std::string combatCondition = "Combat Spam Activation Condition:";
-  std::string radioLmb = "Hold LMB";
-  std::string radioRmb = "Hold RMB";
-  std::string chkGlobalHealth = "Global Auto-Heal by HP pixel";
-  std::string lblHealthKey = "Heal Key: ";
-  std::string lblHealTimer = "Heal Timer (ms)";
-  std::string btnPickCoords = "Pick HP Point with Click";
-  std::string lblSpamList = "Combat Spam Keys List:";
-  std::string btnDelete = "Delete";
-  std::string btnAddKey = "Add Combat Key";
-  std::string lblShift = "Shift";
-  std::string lblCtrl = "Ctrl";
-  std::string lblAlt = "Alt";
-};
 LocStrings lang;
 
 std::string LoadTextResource(int resourceId) {
@@ -394,6 +752,12 @@ void LoadLanguage() {
       lang.captureKeyDesc = val;
     else if (key == "settingsTitle")
       lang.settingsTitle = val;
+    else if (key == "profile")
+      lang.profile = val;
+    else if (key == "btnAddProfile")
+      lang.btnAddProfile = val;
+    else if (key == "btnDeleteProfile")
+      lang.btnDeleteProfile = val;
     else if (key == "btnToggle")
       lang.btnToggle = val;
     else if (key == "btnSettings")
@@ -418,6 +782,8 @@ void LoadLanguage() {
       lang.btnDelete = val;
     else if (key == "btnAddKey")
       lang.btnAddKey = val;
+    else if (key == "lblDelayMs")
+      lang.lblDelayMs = val;
     else if (key == "lblShift")
       lang.lblShift = val;
     else if (key == "lblCtrl")
