@@ -12,8 +12,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -207,8 +207,7 @@ bool TryReadInt(const std::unordered_map<std::string, std::string>& values,
 }
 
 int ReadInt(const std::unordered_map<std::string, std::string>& values,
-            const std::string& key, int fallback, int minValue,
-            int maxValue) {
+            const std::string& key, int fallback, int minValue, int maxValue) {
   int value = fallback;
   TryReadInt(values, key, value);
   return std::clamp(value, minValue, maxValue);
@@ -220,8 +219,9 @@ bool ReadBool(const std::unordered_map<std::string, std::string>& values,
   if (it == values.end()) return fallback;
 
   std::string value = Trim(it->second);
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  std::transform(
+      value.begin(), value.end(), value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (value == "1" || value == "true" || value == "yes" || value == "on")
     return true;
   if (value == "0" || value == "false" || value == "no" || value == "off")
@@ -229,9 +229,9 @@ bool ReadBool(const std::unordered_map<std::string, std::string>& values,
   return fallback;
 }
 
-std::string ReadString(const std::unordered_map<std::string, std::string>& values,
-                       const std::string& key,
-                       const std::string& fallback) {
+std::string ReadString(
+    const std::unordered_map<std::string, std::string>& values,
+    const std::string& key, const std::string& fallback) {
   auto it = values.find(key);
   if (it == values.end()) return fallback;
 
@@ -246,8 +246,7 @@ bool LoadKeyValueConfig(std::unordered_map<std::string, std::string>& values) {
   std::string line;
   while (std::getline(in, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.size() >= 3 &&
-        static_cast<unsigned char>(line[0]) == 0xEF &&
+    if (line.size() >= 3 && static_cast<unsigned char>(line[0]) == 0xEF &&
         static_cast<unsigned char>(line[1]) == 0xBB &&
         static_cast<unsigned char>(line[2]) == 0xBF) {
       line.erase(0, 3);
@@ -344,8 +343,9 @@ void SaveConfig() {
     out << prefix << "name=" << profile.name << "\n";
     out << prefix << "combatMouseTrigger=" << profile.combatMouseTrigger
         << "\n";
-    out << prefix << "globalHealthCheckEnable="
-        << profile.globalHealthCheckEnable << "\n";
+    out << prefix
+        << "globalHealthCheckEnable=" << profile.globalHealthCheckEnable
+        << "\n";
     out << prefix << "healthVKey=" << profile.healthVKey << "\n";
     out << prefix << "healthKeyName=" << profile.healthKeyName << "\n";
     out << prefix << "healthDelayMs=" << profile.healthDelayMs << "\n";
@@ -355,8 +355,7 @@ void SaveConfig() {
 
     for (size_t j = 0; j < profile.spamKeys.size(); ++j) {
       const SpamKey& sk = profile.spamKeys[j];
-      std::string spamPrefix =
-          prefix + "spam." + std::to_string(j) + ".";
+      std::string spamPrefix = prefix + "spam." + std::to_string(j) + ".";
       out << spamPrefix << "vKey=" << sk.vKey << "\n";
       out << spamPrefix << "keyName=" << sk.keyName << "\n";
       out << spamPrefix << "delayMs=" << sk.delayMs << "\n";
@@ -451,8 +450,8 @@ bool LoadModernConfig() {
   }
 
   if (profiles.empty()) profiles.push_back(ProfileConfig{});
-  activeProfileIndex =
-      ReadInt(values, "activeProfile", 0, 0, static_cast<int>(profiles.size()) - 1);
+  activeProfileIndex = ReadInt(values, "activeProfile", 0, 0,
+                               static_cast<int>(profiles.size()) - 1);
   ApplyProfileToGlobals(profiles[activeProfileIndex]);
   return true;
 }
@@ -541,9 +540,8 @@ void CoreMacroLoop() {
   while (true) {
     if (IsDiabloActive()) {
       MacroSettingsSnapshot settings = GetMacroSettingsSnapshot();
-      double healthyRatio =
-          GetHealthyPixelsRatio(settings.healthX, settings.healthY,
-                                RGB(0x9E, 0x30, 0x38), 50);
+      double healthyRatio = GetHealthyPixelsRatio(
+          settings.healthX, settings.healthY, RGB(0x9E, 0x30, 0x38), 50);
 
       if (healthyRatio > 0.0) {
         isHealthy = true;
@@ -719,8 +717,7 @@ void LoadLanguage() {
   std::string line;
   while (std::getline(in, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.size() >= 3 &&
-        static_cast<unsigned char>(line[0]) == 0xEF &&
+    if (line.size() >= 3 && static_cast<unsigned char>(line[0]) == 0xEF &&
         static_cast<unsigned char>(line[1]) == 0xBB &&
         static_cast<unsigned char>(line[2]) == 0xBF) {
       line.erase(0, 3);

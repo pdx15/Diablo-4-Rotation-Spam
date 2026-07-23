@@ -157,8 +157,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f),
                            lang.healthy.c_str());
       else
-        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           lang.lowHp.c_str());
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), lang.lowHp.c_str());
 
       ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
                          (lang.options + "[" + settingsKeyName + "]").c_str());
@@ -186,7 +185,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::End();
       } else if (showSettingsWindow) {
         ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(500, 440), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(520, 440), ImGuiCond_Always);
         ImGui::Begin("Settings Panel", &showSettingsWindow,
                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
                          ImGuiWindowFlags_NoMove);
@@ -222,7 +221,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         }
 
         ImGui::Separator();
-        if (ImGui::Button((lang.btnToggle + "[" + toggleKeyName + "]").c_str())) {
+        if (ImGui::Button(
+                (lang.btnToggle + "[" + toggleKeyName + "]").c_str())) {
           isCapturing = true;
           keyToCaptureType = 0;
         }
@@ -262,8 +262,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
           std::string coordsLabel = lang.btnPickCoords +
                                     " (X:" + std::to_string(healthX) +
                                     " Y:" + std::to_string(healthY) + ")";
-          if (ImGui::Button(coordsLabel.c_str()))
-            isCapturingCoordinates = true;
+          if (ImGui::Button(coordsLabel.c_str())) isCapturingCoordinates = true;
         }
 
         ImGui::Separator();

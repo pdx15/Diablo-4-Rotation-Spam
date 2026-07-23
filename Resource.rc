@@ -49,13 +49,12 @@ LANGUAGE LANG_RUSSIAN,
         // remains consistent on all systems.
         IDI_ICON1 ICON "y.ico"
 
-        /////////////////////////////////////////////////////////////////////////////
-        //
-        // Embedded language files
-        //
+    /////////////////////////////////////////////////////////////////////////////
+    //
+    // Embedded language files
+    //
 
-        IDR_LANG_EN RCDATA "lang_en.txt"
-        IDR_LANG_RU RCDATA "lang_ru.txt"
+    IDR_LANG_EN RCDATA "lang_en.txt" IDR_LANG_RU RCDATA "lang_ru.txt"
 
     /////////////////////////////////////////////////////////////////////////////
     //
@@ -63,7 +62,7 @@ LANGUAGE LANG_RUSSIAN,
     //
 
     VS_VERSION_INFO VERSIONINFO FILEVERSION 1,
-    0, 1, 0 PRODUCTVERSION 1, 0, 1,
+    0, 2, 0 PRODUCTVERSION 1, 0, 2,
     0 FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
     FILEFLAGS 0x1L
@@ -74,11 +73,11 @@ LANGUAGE LANG_RUSSIAN,
     "StringFileInfo" BEGIN BLOCK "041904b0" BEGIN VALUE "CompanyName",
     "Yarche" VALUE "FileDescription",
     "Diablo 4 Rotation Spam" VALUE "FileVersion",
-    "1.0.1.0" VALUE "InternalName", "d4rt.exe" VALUE "LegalCopyright",
+    "1.0.2.0" VALUE "InternalName", "d4rt.exe" VALUE "LegalCopyright",
     "Copyright (C) 2026" VALUE "OriginalFilename",
     "d4rt.exe" VALUE "ProductName",
     "Diablo 4 Overlay Tool" VALUE "ProductVersion",
-    "1.0.1.0" END END BLOCK "VarFileInfo" BEGIN VALUE "Translation", 0x419,
+    "1.0.2.0" END END BLOCK "VarFileInfo" BEGIN VALUE "Translation", 0x419,
     1200 END END
 
 #endif  // Русский (Россия) resources
