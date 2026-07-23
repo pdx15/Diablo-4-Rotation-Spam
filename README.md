@@ -45,3 +45,4 @@ A lightweight, high-performance overlay and macro automation tool for Diablo 4, 
   <img src="assets/settings_preview_ru.png" alt="Меню настроек" width="460"/>
 </p>
 
+[![ViewCount](https://views.whatilearened.today/views/github/pdx15/Diablo-4-Rotation-Spam.svg)](https://github.com/pdx15/Diablo-4-Rotation-Spam)
