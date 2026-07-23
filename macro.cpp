@@ -1,8 +1,11 @@
 #include <windows.h>
 
+#include "resource.h"
+
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -325,16 +328,45 @@ struct LocStrings {
 };
 LocStrings lang;
 
+std::string LoadTextResource(int resourceId) {
+  HMODULE module = GetModuleHandleW(nullptr);
+  HRSRC resourceInfo =
+      FindResourceW(module, MAKEINTRESOURCEW(resourceId), RT_RCDATA);
+  if (!resourceInfo) return {};
+
+  HGLOBAL resourceData = LoadResource(module, resourceInfo);
+  if (!resourceData) return {};
+
+  DWORD resourceSize = SizeofResource(module, resourceInfo);
+  const char* data = static_cast<const char*>(LockResource(resourceData));
+  if (!data || resourceSize == 0) return {};
+
+  return std::string(data, static_cast<size_t>(resourceSize));
+}
+
 void LoadLanguage() {
-  std::string langCode = "en";
+  int resourceId = IDR_LANG_EN;
   LANGID langId = GetUserDefaultUILanguage();
   if (PRIMARYLANGID(langId) == LANG_RUSSIAN) {
-    langCode = "ru";
+    resourceId = IDR_LANG_RU;
   }
-  std::ifstream in("lang_" + langCode + ".txt");
-  if (!in.is_open()) return;
+
+  std::string languageText = LoadTextResource(resourceId);
+  if (languageText.empty() && resourceId != IDR_LANG_EN) {
+    languageText = LoadTextResource(IDR_LANG_EN);
+  }
+  if (languageText.empty()) return;
+
+  std::istringstream in(languageText);
   std::string line;
   while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.size() >= 3 &&
+        static_cast<unsigned char>(line[0]) == 0xEF &&
+        static_cast<unsigned char>(line[1]) == 0xBB &&
+        static_cast<unsigned char>(line[2]) == 0xBF) {
+      line.erase(0, 3);
+    }
     if (line.empty() || line[0] == '#') continue;
     std::size_t sep = line.find('=');
     if (sep == std::string::npos) continue;
@@ -393,5 +425,4 @@ void LoadLanguage() {
     else if (key == "lblAlt")
       lang.lblAlt = val;
   }
-  in.close();
 }
