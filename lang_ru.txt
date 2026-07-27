@@ -17,6 +17,7 @@ btnSettings=Открыть настройки:
 combatCondition=Условие активации боевого спама:
 radioLmb=Зажата ЛКМ
 radioRmb=Зажата ПКМ
+radioAlways=Всегда
 chkGlobalHealth=Глобальный автохил по пикселю ХП
 lblHealthKey=Клавиша хила: 
 lblHealTimer=Таймер хила (мс)

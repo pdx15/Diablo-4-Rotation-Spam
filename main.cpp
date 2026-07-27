@@ -235,9 +235,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
         ImGui::Separator();
         ImGui::Text(lang.combatCondition.c_str());
+
+        ImGui::RadioButton(lang.radioAlways.c_str(), &combatMouseTrigger, -1);
+        ImGui::SameLine();
         ImGui::RadioButton(lang.radioLmb.c_str(), &combatMouseTrigger, 0);
         ImGui::SameLine();
         ImGui::RadioButton(lang.radioRmb.c_str(), &combatMouseTrigger, 1);
+
         if (ImGui::IsItemDeactivatedAfterEdit()) SaveConfig();
 
         ImGui::Separator();

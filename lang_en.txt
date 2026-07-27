@@ -17,6 +17,7 @@ btnSettings=Open Options:
 combatCondition=Combat Spam Activation Condition:
 radioLmb=Hold LMB
 radioRmb=Hold RMB
+radioAlways=Always
 chkGlobalHealth=Global Auto-Heal by HP pixel
 lblHealthKey=Heal Key: 
 lblHealTimer=Heal Timer (ms)

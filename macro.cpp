@@ -423,7 +423,7 @@ bool LoadModernConfig() {
     profile.name =
         ReadString(values, prefix + "name", "Profile " + std::to_string(i + 1));
     profile.combatMouseTrigger =
-        ReadInt(values, prefix + "combatMouseTrigger", 1, 0, 1);
+        ReadInt(values, prefix + "combatMouseTrigger", -1, -1, 1);
     profile.globalHealthCheckEnable =
         ReadBool(values, prefix + "globalHealthCheckEnable", true);
     profile.healthVKey = ReadInt(values, prefix + "healthVKey", 'Q', 1, 255);
@@ -550,10 +550,13 @@ void CoreMacroLoop() {
       }
 
       auto now = std::chrono::steady_clock::now();
-      int currentMouseKey =
-          (settings.combatMouseTrigger == 0) ? VK_LBUTTON : VK_RBUTTON;
-      bool isMouseTriggerPressed =
-          (GetAsyncKeyState(currentMouseKey) & 0x8000) != 0;
+      bool isMouseTriggerPressed = true;
+
+      if (settings.combatMouseTrigger == 0) {
+        isMouseTriggerPressed = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+      } else if (settings.combatMouseTrigger == 1) {
+        isMouseTriggerPressed = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+      }
 
       if (settings.globalHealthCheckEnable && !isHealthy && isScriptActive &&
           isMouseTriggerPressed) {
@@ -765,6 +768,8 @@ void LoadLanguage() {
       lang.radioLmb = val;
     else if (key == "radioRmb")
       lang.radioRmb = val;
+    else if (key == "radioAlways")
+      lang.radioAlways = val;
     else if (key == "chkGlobalHealth")
       lang.chkGlobalHealth = val;
     else if (key == "lblHealthKey")

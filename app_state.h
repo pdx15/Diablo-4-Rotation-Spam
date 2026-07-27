@@ -36,6 +36,7 @@ struct LocStrings {
   std::string combatCondition = "Combat Spam Activation Condition:";
   std::string radioLmb = "Hold LMB";
   std::string radioRmb = "Hold RMB";
+  std::string radioAlways = "Always";
   std::string chkGlobalHealth = "Global Auto-Heal by HP pixel";
   std::string lblHealthKey = "Heal Key: ";
   std::string lblHealTimer = "Heal Timer (ms)";
