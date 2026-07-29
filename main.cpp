@@ -10,8 +10,8 @@
 
 #include "app_state.h"
 #include "imgui/imgui.h"
-#include "imgui/backends/imgui_impl_dx11.h"
-#include "imgui/backends/imgui_impl_win32.h"
+#include "imgui/imgui_impl_dx11.h"
+#include "imgui/imgui_impl_win32.h"
 #include "overlay_utils.h"
 
 extern LocStrings lang;
@@ -34,6 +34,9 @@ extern std::string settingsKeyName;
 extern int keyToCaptureType;
 extern std::vector<ProfileConfig> profiles;
 extern int activeProfileIndex;
+
+static char profileNameBuffer[64] = "";
+static int lastProfileIndex = -1;
 
 extern void LoadConfig();
 extern void SaveConfig();
@@ -62,10 +65,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                     nullptr,    nullptr,    L"OverlayClass", nullptr};
   RegisterClassExW(&wc);
 
-  HWND hwnd =
-      CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
-                      L"OverlayClass", L"Overlay", WS_POPUP, 50, 50, 780,
-                      440, nullptr, nullptr, hInstance, nullptr);
+  HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
+                              L"OverlayClass", L"Overlay", WS_POPUP, 50, 50,
+                              780, 440, nullptr, nullptr, hInstance, nullptr);
   SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 
   if (!CreateDeviceD3D(hwnd)) {
@@ -199,21 +201,46 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
           ImGui::Text(lang.profile.c_str());
           ImGui::SameLine();
+
           ImGui::PushItemWidth(160);
+
           const char* currentProfile =
               profiles[activeProfileIndex].name.c_str();
+
           if (ImGui::BeginCombo("##profile", currentProfile)) {
             for (size_t i = 0; i < profiles.size(); ++i) {
               bool selected = activeProfileIndex == static_cast<int>(i);
-              if (ImGui::Selectable(profiles[i].name.c_str(), selected)) {
+
+              if (ImGui::Selectable(profiles[i].name.c_str(), selected))
                 SelectProfile(static_cast<int>(i));
-              }
+
               if (selected) ImGui::SetItemDefaultFocus();
             }
+
             ImGui::EndCombo();
           }
+
           ImGui::PopItemWidth();
+
+          if (lastProfileIndex != activeProfileIndex) {
+            strcpy_s(profileNameBuffer, sizeof(profileNameBuffer),
+                     profiles[activeProfileIndex].name.c_str());
+
+            lastProfileIndex = activeProfileIndex;
+          }
+
+          ImGui::PushItemWidth(160);
+
+          if (ImGui::InputText("##ProfileName", profileNameBuffer,
+                               sizeof(profileNameBuffer))) {
+            profiles[activeProfileIndex].name = profileNameBuffer;
+            SaveConfig();
+          }
+
+          ImGui::PopItemWidth();
+
           ImGui::SameLine();
+
           if (ImGui::Button(lang.btnAddProfile.c_str())) AddProfile();
           ImGui::SameLine();
           if (ImGui::Button(lang.btnDeleteProfile.c_str()))
