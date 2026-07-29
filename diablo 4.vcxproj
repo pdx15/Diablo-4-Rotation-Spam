@@ -161,6 +161,7 @@
     <ClInclude Include="imgui\imstb_truetype.h" />
     <ClInclude Include="overlay_utils.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="lang_en.txt" />

@@ -29,6 +29,6 @@ lblDelayMs=мс
 lblShift=Шифт
 lblCtrl=Кнтрл
 lblAlt=Альт
-lblFastLootHoldKey=Клавиша удержания (Фаст лут): 
+lblFastLootHoldKey=Клавиша удержания (Fast Loot): 
 lblFastLootClickKey=Клавиша лута в игре: 
 lblFastLootTimer=Таймер быстрого лута (мс)
