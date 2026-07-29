@@ -48,6 +48,9 @@ struct LocStrings {
   std::string lblShift = "Shift";
   std::string lblCtrl = "Ctrl";
   std::string lblAlt = "Alt";
+  std::string lblFastLootHoldKey = "Fast Loot Hold Key: ";
+  std::string lblFastLootClickKey = "Fast Loot Click Key: ";
+  std::string lblFastLootTimer = "Fast Loot Timer (ms)";
 };
 
 struct ProfileConfig {
@@ -59,5 +62,10 @@ struct ProfileConfig {
   int healthDelayMs = 50;
   int healthX = 960;
   int healthY = 1010;
+  int fastLootHoldVKey = 1;  // VK_LBUTTON by default (key to hold down)
+  std::string fastLootHoldKeyName = "LButton";
+  int fastLootClickVKey = 1;  // VK_LBUTTON by default (in-game loot key)
+  std::string fastLootClickKeyName = "LButton";
+  int fastLootDelayMs = 40;
   std::vector<SpamKey> spamKeys;
 };

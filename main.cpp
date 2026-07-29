@@ -29,6 +29,11 @@ extern std::string healthKeyName;
 extern int healthDelayMs;
 extern int healthX;
 extern int healthY;
+extern int fastLootHoldVKey;
+extern std::string fastLootHoldKeyName;
+extern int fastLootClickVKey;
+extern std::string fastLootClickKeyName;
+extern int fastLootDelayMs;
 extern std::string toggleKeyName;
 extern std::string settingsKeyName;
 extern int keyToCaptureType;
@@ -130,7 +135,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       std::lock_guard<std::recursive_mutex> lock(settingsMutex);
 
       ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-      ImGui::SetNextWindowSize(ImVec2(230, 94), ImGuiCond_Always);
+      ImGui::SetNextWindowSize(ImVec2(230, 114), ImGuiCond_Always);
       ImGui::Begin("StatusPanel", nullptr,
                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
@@ -160,6 +165,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                            lang.healthy.c_str());
       else
         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), lang.lowHp.c_str());
+
+      if (!profiles.empty() && activeProfileIndex >= 0 &&
+          activeProfileIndex < static_cast<int>(profiles.size())) {
+        ImGui::Text(lang.profile.c_str());
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f),
+                           profiles[activeProfileIndex].name.c_str());
+      }
 
       ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
                          (lang.options + "[" + settingsKeyName + "]").c_str());
@@ -297,13 +310,36 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         }
 
         ImGui::Separator();
+        if (ImGui::Button(
+                (lang.lblFastLootHoldKey + "[" + fastLootHoldKeyName + "]")
+                    .c_str())) {
+          isCapturing = true;
+          keyToCaptureType = 3;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(
+                (lang.lblFastLootClickKey + "[" + fastLootClickKeyName + "]")
+                    .c_str())) {
+          isCapturing = true;
+          keyToCaptureType = 4;
+        }
+        ImGui::SameLine();
+        ImGui::PushItemWidth(100);
+        if (ImGui::InputInt(lang.lblFastLootTimer.c_str(), &fastLootDelayMs, 0,
+                            0)) {
+          if (fastLootDelayMs < 1) fastLootDelayMs = 1;
+          SaveConfig();
+        }
+        ImGui::PopItemWidth();
+
+        ImGui::Separator();
         ImGui::Text(lang.lblSpamList.c_str());
         for (size_t i = 0; i < spamKeys.size(); i++) {
           ImGui::PushID(static_cast<int>(i));
           if (ImGui::Button(("[" + spamKeys[i].keyName + "]##btn").c_str(),
                             ImVec2(65, 0))) {
             isCapturing = true;
-            keyToCaptureType = static_cast<int>(3 + i);
+            keyToCaptureType = static_cast<int>(5 + i);
           }
           ImGui::SameLine();
           ImGui::PushItemWidth(65);

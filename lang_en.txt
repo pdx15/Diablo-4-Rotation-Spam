@@ -29,3 +29,6 @@ lblDelayMs=ms
 lblShift=Shift
 lblCtrl=Ctrl
 lblAlt=Alt
+lblFastLootHoldKey=Fast Loot Hold Key: 
+lblFastLootClickKey=Fast Loot Click Key: 
+lblFastLootTimer=Fast Loot Timer (ms)
