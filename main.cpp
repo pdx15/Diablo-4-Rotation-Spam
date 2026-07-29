@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "app_state.h"
-#include "imgui.h"
-#include "imgui_impl_dx11.h"
-#include "imgui_impl_win32.h"
+#include "imgui/imgui.h"
+#include "imgui/backends/imgui_impl_dx11.h"
+#include "imgui/backends/imgui_impl_win32.h"
 #include "overlay_utils.h"
 
 extern LocStrings lang;
@@ -64,7 +64,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   HWND hwnd =
       CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
-                      L"OverlayClass", L"musml Overlay", WS_POPUP, 50, 50, 780,
+                      L"OverlayClass", L"Overlay", WS_POPUP, 50, 50, 780,
                       440, nullptr, nullptr, hInstance, nullptr);
   SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 

@@ -3,7 +3,7 @@
 #include <shellapi.h>
 #include <windows.h>
 
-#include "imgui.h"
+#include "imgui/imgui.h"
 #include "resource.h"
 
 #pragma comment(lib, "d3d11.lib")
@@ -37,7 +37,7 @@ inline void CreateTrayIcon(HWND hWnd) {
     g_NotifyIconData.hIcon = LoadIconW(nullptr, (LPCWSTR)IDI_APPLICATION);
   }
 
-  wcscpy_s(g_NotifyIconData.szTip, L"musml Diablo 4 Tool");
+  wcscpy_s(g_NotifyIconData.szTip, L"Diablo 4 Tool");
   Shell_NotifyIconW(NIM_ADD, &g_NotifyIconData);
 }
 

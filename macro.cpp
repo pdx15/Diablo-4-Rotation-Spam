@@ -21,6 +21,23 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <shlobj.h>
+
+std::string GetConfigPath()
+{
+    char path[MAX_PATH];
+
+    SHGetFolderPathA(nullptr,
+                     CSIDL_APPDATA,
+                     nullptr,
+                     SHGFP_TYPE_CURRENT,
+                     path);
+
+    std::string folder = std::string(path) + "\\d4rt";
+    CreateDirectoryA(folder.c_str(), nullptr);
+
+    return folder + "\\config.txt";
+}
 
 std::atomic<bool> isScriptActive(false);
 std::atomic<bool> isHealthy(true);
@@ -240,7 +257,7 @@ std::string ReadString(
 }
 
 bool LoadKeyValueConfig(std::unordered_map<std::string, std::string>& values) {
-  std::ifstream in("config.txt");
+  std::ifstream in(GetConfigPath());
   if (!in.is_open()) return false;
 
   std::string line;
@@ -326,7 +343,7 @@ void SaveConfig() {
   }
   StoreGlobalsInActiveProfile();
 
-  std::ofstream out("config.txt", std::ios::trunc);
+  std::ofstream out(GetConfigPath(), std::ios::trunc);
   if (!out.is_open()) return;
 
   out << "version=2\n";
@@ -367,7 +384,7 @@ void SaveConfig() {
 }
 
 bool LoadLegacyConfig() {
-  std::ifstream in("config.txt");
+  std::ifstream in(GetConfigPath());
   if (!in.is_open()) return false;
 
   if (!(in >> toggleHotkey >> toggleKeyName >> settingsHotkey >>
