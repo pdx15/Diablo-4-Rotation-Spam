@@ -741,8 +741,12 @@ void GlobalHotkeyMonitor() {
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
       }
     } else if (capturingKey) {
+      bool allowMouseButtons = (keyToCaptureType == 3 || keyToCaptureType == 4);
+
       for (int vk = 1; vk < 256; vk++) {
-        if (vk == VK_LBUTTON || vk == VK_RBUTTON) continue;
+        if (!allowMouseButtons && (vk == VK_LBUTTON || vk == VK_RBUTTON))
+          continue;
+
         if (GetAsyncKeyState(vk) & 0x8000) {
           std::string name = GetKeyNameFromVK(vk);
           {

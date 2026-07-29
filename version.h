@@ -2,7 +2,7 @@
 
 #define APP_VER_MAJOR 1
 #define APP_VER_MINOR 0
-#define APP_VER_PATCH 2
+#define APP_VER_PATCH 3
 #define APP_VER_BUILD 0
 
 #define APP_VERSION_STR "1.0.3.0"
