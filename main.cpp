@@ -43,8 +43,22 @@ extern std::vector<ProfileConfig> profiles;
 extern int activeProfileIndex;
 extern bool autoUpdateEnabled;
 
-static char profileNameBuffer[64] = "";
-static int lastProfileIndex = -1;
+namespace {
+constexpr int kOverlayWidth = 1200;
+constexpr int kOverlayHeight = 760;
+constexpr float kSettingsWindowInitialX = 245.0f;
+constexpr float kSettingsWindowInitialY = 0.0f;
+constexpr float kSettingsWindowDefaultWidth = 560.0f;
+constexpr float kSettingsWindowDefaultHeight = 520.0f;
+constexpr float kSettingsWindowMaxWidth = 900.0f;
+constexpr float kSettingsWindowMaxHeight = 720.0f;
+
+static_assert(kOverlayWidth >
+              kSettingsWindowInitialX + kSettingsWindowMaxWidth);
+
+char profileNameBuffer[64] = "";
+int lastProfileIndex = -1;
+}  // namespace
 
 extern void LoadConfig();
 extern void SaveConfig();
@@ -76,7 +90,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
                               L"OverlayClass", L"Overlay", WS_POPUP, 50, 50,
-                              1100, 760, nullptr, nullptr, hInstance, nullptr);
+                              kOverlayWidth, kOverlayHeight, nullptr, nullptr,
+                              hInstance, nullptr);
   SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 
   if (!CreateDeviceD3D(hwnd)) {
@@ -203,9 +218,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::Text(lang.captureKeyDesc.c_str());
         ImGui::End();
       } else if (showSettingsWindow) {
-        ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(460, 320), ImVec2(900, 720));
+        ImGui::SetNextWindowPos(
+            ImVec2(kSettingsWindowInitialX, kSettingsWindowInitialY),
+            ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(
+            ImVec2(kSettingsWindowDefaultWidth, kSettingsWindowDefaultHeight),
+            ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(460, 320),
+            ImVec2(kSettingsWindowMaxWidth, kSettingsWindowMaxHeight));
         std::string settingsWindowTitle =
             lang.settingsWindowTitle + "###SettingsPanel";
         ImGui::Begin(settingsWindowTitle.c_str(), &showSettingsWindow,
