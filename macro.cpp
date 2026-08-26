@@ -977,6 +977,8 @@ void LoadLanguage() {
 			lang.updateMsgDownloadProgress = val;
 		else if (key == "updateMsgDownloadProgressUnknown")
 			lang.updateMsgDownloadProgressUnknown = val;
+		else if (key == "updateMsgExtracting")
+			lang.updateMsgExtracting = val;
 		else if (key == "updateMsgInstalling")
 			lang.updateMsgInstalling = val;
 		else if (key == "updateMsgRestarting")
@@ -995,6 +997,10 @@ void LoadLanguage() {
 			lang.updateErrPrepareFailed = val;
 		else if (key == "updateErrWriteFailed")
 			lang.updateErrWriteFailed = val;
+		else if (key == "updateErrVerifyFailed")
+			lang.updateErrVerifyFailed = val;
+		else if (key == "updateErrRestartFailed")
+			lang.updateErrRestartFailed = val;
 		else if (key == "updateErrInvalidUrl")
 			lang.updateErrInvalidUrl = val;
 		else if (key == "updateErrWinHttpSession")

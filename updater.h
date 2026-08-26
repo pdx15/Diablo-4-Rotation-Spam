@@ -24,6 +24,9 @@ struct UpdateStatus {
 };
 
 void CleanupUpdateArtifacts();
+// Blocks until the process that launched us (the pre-update build) is gone, so
+// its executable can be replaced/cleaned up safely.
+void WaitForPreviousInstance(unsigned long processId);
 void StartUpdateCheck();
 void StartUpdateProcess();
 void OpenLatestReleasePage();
