@@ -4,6 +4,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -78,8 +80,26 @@ ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
+namespace {
+	// The updater relaunches us as: <exe> --updated-from <pid of old process>.
+	// We must wait for that process to die before touching its leftovers,
+	// otherwise the .bak file stays locked and the cleanup silently fails.
+	unsigned long ParseUpdatedFromPid(LPSTR commandLine) {
+		if (!commandLine) return 0;
+		const char* marker = "--updated-from";
+		const char* found = strstr(commandLine, marker);
+		if (!found) return 0;
+		found += strlen(marker);
+		while (*found == ' ' || *found == '=') ++found;
+		return strtoul(found, nullptr, 10);
+	}
+}  // namespace
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	LPSTR lpCmdLine, int nCmdShow) {
+	unsigned long previousPid = ParseUpdatedFromPid(lpCmdLine);
+	if (previousPid != 0) WaitForPreviousInstance(previousPid);
+
 	LoadLanguage();
 	LoadConfig();
 	CleanupUpdateArtifacts();
@@ -369,7 +389,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 						lang.updateInstalling.c_str());
 				}
 
-				bool canUpdate = (updateStatus.phase == UpdatePhase::Available) &&
+				// Retrying after a failure must stay possible: a failed install
+				// rolls back, so the app is still the old (updatable) version.
+				bool canUpdate = (updateStatus.phase == UpdatePhase::Available ||
+					updateStatus.phase == UpdatePhase::Failed) &&
 					!updateBusy;
 				if (!canUpdate) ImGui::BeginDisabled();
 				if (ImGui::Button(lang.btnUpdate.c_str())) StartUpdateProcess();

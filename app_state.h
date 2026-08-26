@@ -72,6 +72,7 @@ struct LocStrings {
 	std::string updateMsgDownloadProgress =
 		"Downloading update... %llu KB / %llu KB";
 	std::string updateMsgDownloadProgressUnknown = "Downloading update... %llu KB";
+	std::string updateMsgExtracting = "Extracting update...";
 	std::string updateMsgInstalling = "Installing update...";
 	std::string updateMsgRestarting = "Update applied, restarting...";
 	std::string updateErrCheckFailed = "Update check failed: ";
@@ -83,6 +84,10 @@ struct LocStrings {
 		"Cannot extract update archive. Opening release page.";
 	std::string updateErrPrepareFailed = "Cannot prepare for update: ";
 	std::string updateErrWriteFailed = "Cannot write update file: ";
+	std::string updateErrVerifyFailed =
+		"Downloaded update is damaged, the old version was kept";
+	std::string updateErrRestartFailed =
+		"Cannot start the new version, the old version was restored: ";
 	std::string updateErrInvalidUrl = "Invalid update URL: ";
 	std::string updateErrWinHttpSession = "WinHTTP session failed: ";
 	std::string updateErrWinHttpConnect = "WinHTTP connect failed: ";
