@@ -1,5 +1,8 @@
 #pragma once
+// windows.h MUST come first: shellapi.h depends on it.
+// Do not sort these includes alphabetically.
 #include <windows.h>
+
 #include <d3d11.h>
 #include <shellapi.h>
 
