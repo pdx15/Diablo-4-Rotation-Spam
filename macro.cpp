@@ -931,13 +931,19 @@ void LoadLanguage() {
       lang.updateCurrentVersion = val;
     else if (key == "updateStatus")
       lang.updateStatus = val;
+    else if (key == "updatePrompt")
+      lang.updatePrompt = val;
     else if (key == "btnCheckUpdate")
       lang.btnCheckUpdate = val;
-    else if (key == "btnDownloadUpdate")
-      lang.btnDownloadUpdate = val;
-    else if (key == "btnInstallUpdate")
-      lang.btnInstallUpdate = val;
+    else if (key == "btnUpdate")
+      lang.btnUpdate = val;
+    else if (key == "btnLater")
+      lang.btnLater = val;
     else if (key == "btnOpenRelease")
       lang.btnOpenRelease = val;
+    else if (key == "updateDownloading")
+      lang.updateDownloading = val;
+    else if (key == "updateInstalling")
+      lang.updateInstalling = val;
   }
 }

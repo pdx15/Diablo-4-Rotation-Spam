@@ -1,6 +1,7 @@
 #include "updater.h"
 
 #include <shldisp.h>
+#include <shellapi.h>
 #include <windows.h>
 #include <winhttp.h>
 
@@ -51,11 +52,52 @@ struct UpdaterState {
   std::string releaseUrl;
   std::string downloadUrl;
   std::wstring downloadedPath;
-  bool canInstall = false;
+  float downloadProgress = 0.0f;
+  std::uint64_t downloadedBytes = 0;
+  std::uint64_t totalBytes = 0;
 };
 
 std::mutex g_updateMutex;
 UpdaterState g_updateState;
+
+void DeleteOldUpdateBackups() {
+  wchar_t curExe[MAX_PATH] = {};
+  if (GetModuleFileNameW(nullptr, curExe, MAX_PATH) == 0) return;
+  std::wstring bakPath = std::wstring(curExe) + L".bak";
+  DeleteFileW(bakPath.c_str());
+
+  wchar_t tempDir[MAX_PATH] = {};
+  if (GetTempPathW(MAX_PATH, tempDir) > 0) {
+    WIN32_FIND_DATAW fd;
+    std::wstring pattern = std::wstring(tempDir) + L"d4rt_*";
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+      do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+          std::wstring tempPath = std::wstring(tempDir) + fd.cFileName;
+          DeleteFileW(tempPath.c_str());
+        }
+      } while (FindNextFileW(h, &fd));
+      FindClose(h);
+    }
+
+    std::wstring zipPattern = std::wstring(tempDir) + L"d4rt_unzip_*";
+    h = FindFirstFileW(zipPattern.c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+      do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+          std::wstring dirPath = std::wstring(tempDir) + fd.cFileName;
+          SHFILEOPSTRUCTW op = {};
+          op.wFunc = FO_DELETE;
+          op.pFrom = dirPath.c_str();
+          op.fFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI;
+          SHFileOperationW(&op);
+        }
+      } while (FindNextFileW(h, &fd));
+      FindClose(h);
+    }
+  }
+}
 
 std::wstring Utf8ToWide(const std::string& text) {
   if (text.empty()) return {};
@@ -105,17 +147,43 @@ void SetState(UpdatePhase phase, const std::string& message) {
   std::lock_guard<std::mutex> lock(g_updateMutex);
   g_updateState.phase = phase;
   g_updateState.message = message;
+  if (phase != UpdatePhase::Downloading) {
+    g_updateState.downloadProgress = 0.0f;
+    g_updateState.downloadedBytes = 0;
+    g_updateState.totalBytes = 0;
+  }
+}
+
+void SetDownloadProgress(std::uint64_t downloaded, std::uint64_t total) {
+  std::lock_guard<std::mutex> lock(g_updateMutex);
+  g_updateState.downloadedBytes = downloaded;
+  g_updateState.totalBytes = total;
+  if (total > 0) {
+    g_updateState.downloadProgress = static_cast<float>(
+        static_cast<double>(downloaded) / static_cast<double>(total));
+  } else {
+    g_updateState.downloadProgress = -1.0f;
+  }
+  if (total > 0) {
+    g_updateState.message = "Downloading update... " +
+        std::to_string(downloaded / 1024) + " KB / " +
+        std::to_string(total / 1024) + " KB";
+  } else {
+    g_updateState.message = "Downloading update... " +
+        std::to_string(downloaded / 1024) + " KB";
+  }
 }
 
 bool IsBusyPhase(UpdatePhase phase) {
   return phase == UpdatePhase::Checking || phase == UpdatePhase::Downloading ||
-         phase == UpdatePhase::Installing;
+         phase == UpdatePhase::Installing || phase == UpdatePhase::Restarting;
 }
 
 std::optional<std::string> HttpGetString(const std::string& url,
                                          std::string& error);
 bool DownloadUrlToFile(const std::string& url, const std::wstring& path,
-                       std::string& error);
+                       std::string& error,
+                       void (*progressCb)(std::uint64_t, std::uint64_t));
 
 bool CrackUrl(const std::string& url, std::wstring& host, std::wstring& path,
               INTERNET_PORT& port, bool& secure, std::string& error) {
@@ -239,14 +307,26 @@ std::optional<std::string> HttpGetString(const std::string& url,
 }
 
 bool DownloadUrlToFile(const std::string& url, const std::wstring& path,
-                       std::string& error) {
+                       std::string& error,
+                       void (*progressCb)(std::uint64_t, std::uint64_t)) {
   HINTERNET session = nullptr;
   HINTERNET connect = nullptr;
   HINTERNET request = OpenRequest(url, session, connect, error);
 
   bool ok = false;
   HANDLE file = INVALID_HANDLE_VALUE;
+  std::uint64_t totalBytes = 0;
+  std::uint64_t downloaded = 0;
+
   if (request && SendAndCheckStatus(request, error)) {
+    wchar_t contentLength[64] = {};
+    DWORD clSize = sizeof(contentLength);
+    if (WinHttpQueryHeadersW(request, WINHTTP_QUERY_CONTENT_LENGTH,
+                             WINHTTP_HEADER_NAME_BY_INDEX, contentLength,
+                             &clSize, WINHTTP_NO_HEADER_INDEX)) {
+      totalBytes = static_cast<std::uint64_t>(_wtoi64(contentLength));
+    }
+
     file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
@@ -271,6 +351,13 @@ bool DownloadUrlToFile(const std::string& url, const std::wstring& path,
           ok = false;
           break;
         }
+
+        downloaded += static_cast<std::uint64_t>(read);
+        if (progressCb) progressCb(downloaded, totalBytes);
+      }
+
+      if (ok && progressCb && totalBytes > 0 && downloaded >= totalBytes) {
+        progressCb(totalBytes, totalBytes);
       }
     }
   }
@@ -554,6 +641,12 @@ void ReplaceAndRestart(const std::wstring& srcExe) {
     return;
   }
 
+  {
+    std::lock_guard<std::mutex> lock(g_updateMutex);
+    g_updateState.phase = UpdatePhase::Restarting;
+    g_updateState.message = "Update applied, restarting...";
+  }
+
   std::wstring dir = target.substr(0, target.find_last_of(L"\\/"));
   STARTUPINFOW si = {};
   si.cb = sizeof(si);
@@ -567,31 +660,48 @@ void ReplaceAndRestart(const std::wstring& srcExe) {
   ExitProcess(0);
 }
 
-void DownloadReleaseAsset(const ReleaseInfo& info) {
+void RunFullUpdate(const ReleaseInfo& info) {
   if (info.downloadUrl.empty()) {
-    std::lock_guard<std::mutex> lock(g_updateMutex);
-    g_updateState.phase = UpdatePhase::Available;
-    g_updateState.message = "Update available, but the release has no asset";
-    g_updateState.canInstall = false;
+    SetState(UpdatePhase::Available,
+             "Update available, but the release has no downloadable asset");
+    OpenLatestReleasePage();
     return;
   }
 
   SetState(UpdatePhase::Downloading, "Downloading update...");
   std::wstring path = GetTempUpdatePath(info.assetName);
   std::string error;
-  if (!DownloadUrlToFile(info.downloadUrl, path, error)) {
+  if (!DownloadUrlToFile(info.downloadUrl, path, error, SetDownloadProgress)) {
     SetState(UpdatePhase::Failed, "Update download failed: " + error);
     return;
   }
 
-  std::lock_guard<std::mutex> lock(g_updateMutex);
-  g_updateState.phase = UpdatePhase::Downloaded;
-  g_updateState.downloadedPath = path;
-  g_updateState.canInstall = true;
-  g_updateState.message = "Update downloaded. Click Install to apply.";
+  SetState(UpdatePhase::Installing, "Installing update...");
+
+  std::wstring srcExe = path;
+  if (EndsWithI(path, L".zip")) {
+    wchar_t tempDir[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, tempDir);
+    std::wstring extractDir = std::wstring(tempDir) + L"d4rt_unzip_" +
+                              std::to_wstring(GetCurrentProcessId());
+    CreateDirectoryW(extractDir.c_str(), nullptr);
+
+    std::wstring innerExe;
+    if (!ExtractZipFirstExe(path, extractDir, innerExe)) {
+      SetState(UpdatePhase::Failed,
+               "Cannot extract update archive. Opening release page.");
+      ShellExecuteW(nullptr, L"open", extractDir.c_str(), nullptr, nullptr,
+                    SW_SHOWNORMAL);
+      OpenLatestReleasePage();
+      return;
+    }
+    srcExe = innerExe;
+  }
+
+  ReplaceAndRestart(srcExe);
 }
 
-void CheckWorker(bool autoDownload) {
+void CheckWorker() {
   SetState(UpdatePhase::Checking, "Checking GitHub releases...");
 
   std::string error;
@@ -612,8 +722,10 @@ void CheckWorker(bool autoDownload) {
     g_updateState.latestVersion = info->tagName;
     g_updateState.releaseUrl = info->htmlUrl;
     g_updateState.downloadUrl = info->downloadUrl;
-    g_updateState.canInstall = false;
     g_updateState.downloadedPath.clear();
+    g_updateState.downloadProgress = 0.0f;
+    g_updateState.downloadedBytes = 0;
+    g_updateState.totalBytes = 0;
   }
 
   if (!IsRemoteNewer(info->tagName, APP_VERSION_STR)) {
@@ -626,15 +738,16 @@ void CheckWorker(bool autoDownload) {
     std::lock_guard<std::mutex> lock(g_updateMutex);
     g_updateState.phase = UpdatePhase::Available;
     g_updateState.message =
-        "Update available: " + info->tagName + " (current " APP_VERSION_STR ")";
+        "Update available: " + info->tagName + " (current " APP_VERSION_STR "). Click Update to install.";
   }
-
-  if (autoDownload) DownloadReleaseAsset(*info);
 }
 
 }  // namespace
 
-void StartUpdateCheck(bool autoDownload) {
+void CleanupUpdateArtifacts() { DeleteOldUpdateBackups(); }
+
+void StartUpdateCheck() {
+  DeleteOldUpdateBackups();
   {
     std::lock_guard<std::mutex> lock(g_updateMutex);
     if (IsBusyPhase(g_updateState.phase)) return;
@@ -642,15 +755,17 @@ void StartUpdateCheck(bool autoDownload) {
     g_updateState.message = "Checking GitHub releases...";
   }
 
-  std::thread(CheckWorker, autoDownload).detach();
+  std::thread(CheckWorker).detach();
 }
 
-void StartUpdateDownload() {
+void StartUpdateProcess() {
   ReleaseInfo info;
   {
     std::lock_guard<std::mutex> lock(g_updateMutex);
-    if (IsBusyPhase(g_updateState.phase) ||
-        g_updateState.phase != UpdatePhase::Available) {
+    if (IsBusyPhase(g_updateState.phase)) return;
+    if (g_updateState.phase != UpdatePhase::Available &&
+        g_updateState.phase != UpdatePhase::Failed &&
+        g_updateState.phase != UpdatePhase::UpToDate) {
       return;
     }
     info.tagName = g_updateState.latestVersion;
@@ -660,46 +775,10 @@ void StartUpdateDownload() {
     info.assetName = slash == std::string::npos
                          ? info.downloadUrl
                          : info.downloadUrl.substr(slash + 1);
-    g_updateState.phase = UpdatePhase::Downloading;
-    g_updateState.message = "Downloading update...";
+    if (info.tagName.empty() || info.downloadUrl.empty()) return;
   }
 
-  std::thread(DownloadReleaseAsset, info).detach();
-}
-
-void InstallDownloadedUpdate() {
-  std::wstring assetPath;
-  {
-    std::lock_guard<std::mutex> lock(g_updateMutex);
-    if (!g_updateState.canInstall || g_updateState.downloadedPath.empty())
-      return;
-    g_updateState.phase = UpdatePhase::Installing;
-    g_updateState.message = "Installing update...";
-    assetPath = g_updateState.downloadedPath;
-  }
-
-  std::wstring srcExe = assetPath;
-  if (EndsWithI(assetPath, L".zip")) {
-    wchar_t tempDir[MAX_PATH] = {};
-    GetTempPathW(MAX_PATH, tempDir);
-    std::wstring extractDir = std::wstring(tempDir) + L"d4rt_unzip_" +
-                              std::to_wstring(GetCurrentProcessId());
-    CreateDirectoryW(extractDir.c_str(), nullptr);
-
-    std::wstring innerExe;
-    if (!ExtractZipFirstExe(assetPath, extractDir, innerExe)) {
-      SetState(UpdatePhase::Failed,
-               "Cannot extract update archive. Open the folder to install "
-               "manually.");
-      ShellExecuteW(nullptr, L"open", extractDir.c_str(), nullptr, nullptr,
-                    SW_SHOWNORMAL);
-      OpenLatestReleasePage();
-      return;
-    }
-    srcExe = innerExe;
-  }
-
-  ReplaceAndRestart(srcExe);
+  std::thread(RunFullUpdate, info).detach();
 }
 
 void OpenLatestReleasePage() {
@@ -713,8 +792,9 @@ UpdateStatus GetUpdateStatus() {
   status.phase = g_updateState.phase;
   status.message = g_updateState.message;
   status.latestVersion = g_updateState.latestVersion;
-  status.hasDownload = !g_updateState.downloadUrl.empty();
-  status.canInstall = g_updateState.canInstall;
+  status.downloadProgress = g_updateState.downloadProgress;
+  status.downloadedBytes = g_updateState.downloadedBytes;
+  status.totalBytes = g_updateState.totalBytes;
   return status;
 }
 

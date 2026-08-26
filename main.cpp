@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -58,6 +59,8 @@ static_assert(kOverlayWidth >
 
 char profileNameBuffer[64] = "";
 int lastProfileIndex = -1;
+bool updatePopupOpen = false;
+UpdatePhase lastUpdatePhase = UpdatePhase::Idle;
 }  // namespace
 
 extern void LoadConfig();
@@ -79,7 +82,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow) {
   LoadLanguage();
   LoadConfig();
-  if (autoUpdateEnabled) StartUpdateCheck(true);
+  CleanupUpdateArtifacts();
+  if (autoUpdateEnabled) StartUpdateCheck();
   std::thread(CoreMacroLoop).detach();
   std::thread(GlobalHotkeyMonitor).detach();
 
@@ -290,32 +294,79 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::Separator();
         if (ImGui::Checkbox(lang.chkAutoUpdate.c_str(), &autoUpdateEnabled)) {
           SaveConfig();
-          if (autoUpdateEnabled) StartUpdateCheck(true);
+          if (autoUpdateEnabled) StartUpdateCheck();
         }
         ImGui::SameLine();
         bool updateBusy = IsUpdateBusy();
         if (updateBusy) ImGui::BeginDisabled();
-        if (ImGui::Button(lang.btnCheckUpdate.c_str())) StartUpdateCheck(false);
+        if (ImGui::Button(lang.btnCheckUpdate.c_str())) StartUpdateCheck();
         if (updateBusy) ImGui::EndDisabled();
 
         UpdateStatus updateStatus = GetUpdateStatus();
+
+        if (updateStatus.phase == UpdatePhase::Available &&
+            lastUpdatePhase != UpdatePhase::Available &&
+            lastUpdatePhase != UpdatePhase::Downloading &&
+            lastUpdatePhase != UpdatePhase::Installing &&
+            lastUpdatePhase != UpdatePhase::Restarting) {
+          updatePopupOpen = true;
+          ImGui::OpenPopup("Update Available");
+        }
+        lastUpdatePhase = updateStatus.phase;
+
+        ImGui::SetNextWindowSize(ImVec2(400, 140), ImGuiCond_Always);
+        if (ImGui::BeginPopupModal("Update Available", &updatePopupOpen,
+                                   ImGuiWindowFlags_NoResize)) {
+          char promptBuf[256];
+          snprintf(promptBuf, sizeof(promptBuf), lang.updatePrompt.c_str(),
+                   updateStatus.latestVersion.c_str());
+          ImGui::TextWrapped("%s", promptBuf);
+          ImGui::Separator();
+          if (ImGui::Button(lang.btnUpdate.c_str(), ImVec2(100, 0))) {
+            StartUpdateProcess();
+            ImGui::CloseCurrentPopup();
+            updatePopupOpen = false;
+          }
+          ImGui::SameLine();
+          if (ImGui::Button(lang.btnLater.c_str(), ImVec2(100, 0))) {
+            ImGui::CloseCurrentPopup();
+            updatePopupOpen = false;
+          }
+          ImGui::SameLine();
+          if (ImGui::Button(lang.btnOpenRelease.c_str(), ImVec2(160, 0))) {
+            OpenLatestReleasePage();
+          }
+          ImGui::EndPopup();
+        }
+
         ImGui::Text("%s %s", lang.updateCurrentVersion.c_str(),
                     APP_VERSION_STR);
         ImGui::TextWrapped("%s %s", lang.updateStatus.c_str(),
                            updateStatus.message.c_str());
 
-        bool canDownload = updateStatus.phase == UpdatePhase::Available &&
-                           updateStatus.hasDownload && !updateBusy;
-        if (!canDownload) ImGui::BeginDisabled();
-        if (ImGui::Button(lang.btnDownloadUpdate.c_str()))
-          StartUpdateDownload();
-        if (!canDownload) ImGui::EndDisabled();
+        if (updateStatus.phase == UpdatePhase::Downloading &&
+            updateStatus.downloadProgress >= 0.0f) {
+          if (updateStatus.totalBytes > 0) {
+            char overlay[64];
+            snprintf(overlay, sizeof(overlay), "%.1f %%",
+                     updateStatus.downloadProgress * 100.0f);
+            ImGui::ProgressBar(updateStatus.downloadProgress, ImVec2(-1, 0),
+                               overlay);
+          } else {
+            ImGui::ProgressBar(-1.0f, ImVec2(-1, 0),
+                               lang.updateDownloading.c_str());
+          }
+        } else if (updateStatus.phase == UpdatePhase::Installing ||
+                   updateStatus.phase == UpdatePhase::Restarting) {
+          ImGui::ProgressBar(-1.0f, ImVec2(-1, 0),
+                             lang.updateInstalling.c_str());
+        }
 
-        ImGui::SameLine();
-        if (!updateStatus.canInstall) ImGui::BeginDisabled();
-        if (ImGui::Button(lang.btnInstallUpdate.c_str()))
-          InstallDownloadedUpdate();
-        if (!updateStatus.canInstall) ImGui::EndDisabled();
+        bool canUpdate = (updateStatus.phase == UpdatePhase::Available) &&
+                         !updateBusy;
+        if (!canUpdate) ImGui::BeginDisabled();
+        if (ImGui::Button(lang.btnUpdate.c_str())) StartUpdateProcess();
+        if (!canUpdate) ImGui::EndDisabled();
 
         ImGui::SameLine();
         if (ImGui::Button(lang.btnOpenRelease.c_str())) OpenLatestReleasePage();
