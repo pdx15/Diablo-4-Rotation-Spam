@@ -1,9 +1,8 @@
 #include "updater.h"
 
-#include <windows.h>
-
 #include <shellapi.h>
 #include <shldisp.h>
+#include <windows.h>
 #include <winhttp.h>
 
 #include "version.h"
@@ -17,6 +16,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdarg>
+#include <cstdio>
 #include <cwctype>
 #include <mutex>
 #include <optional>
@@ -24,6 +25,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "app_state.h"
+
+extern LocStrings lang;
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "ole32.lib")
@@ -48,7 +53,8 @@ namespace {
 
 	struct UpdaterState {
 		UpdatePhase phase = UpdatePhase::Idle;
-		std::string message = "Ready";
+
+		std::string message;
 		std::string latestVersion;
 		std::string releaseUrl;
 		std::string downloadUrl;
@@ -60,6 +66,19 @@ namespace {
 
 	std::mutex g_updateMutex;
 	UpdaterState g_updateState;
+
+	std::string FormatTr(const std::string& format, ...) {
+		va_list args;
+		va_start(args, format);
+		char buffer[512];
+		int written = vsnprintf(buffer, sizeof(buffer), format.c_str(), args);
+		va_end(args);
+		if (written < 0) return format;
+		const size_t length = static_cast<size_t>(written) < sizeof(buffer) - 1
+			? static_cast<size_t>(written)
+			: sizeof(buffer) - 1;
+		return std::string(buffer, length);
+	}
 
 	void DeleteOldUpdateBackups() {
 		wchar_t curExe[MAX_PATH] = {};
@@ -167,13 +186,15 @@ namespace {
 			g_updateState.downloadProgress = -1.0f;
 		}
 		if (total > 0) {
-			g_updateState.message = "Downloading update... " +
-				std::to_string(downloaded / 1024) + " KB / " +
-				std::to_string(total / 1024) + " KB";
+			g_updateState.message = FormatTr(
+				lang.updateMsgDownloadProgress,
+				static_cast<unsigned long long>(downloaded / 1024),
+				static_cast<unsigned long long>(total / 1024));
 		}
 		else {
-			g_updateState.message =
-				"Downloading update... " + std::to_string(downloaded / 1024) + " KB";
+			g_updateState.message = FormatTr(
+				lang.updateMsgDownloadProgressUnknown,
+				static_cast<unsigned long long>(downloaded / 1024));
 		}
 	}
 
@@ -199,7 +220,7 @@ namespace {
 		parts.dwExtraInfoLength = static_cast<DWORD>(-1);
 
 		if (!WinHttpCrackUrl(wideUrl.c_str(), 0, 0, &parts)) {
-			error = "Invalid update URL: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrInvalidUrl + WideToUtf8(GetLastErrorText());
 			return false;
 		}
 
@@ -226,13 +247,13 @@ namespace {
 			WinHttpOpen(L"d4rt/" APP_VERSION_STR, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
 				WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 		if (!session) {
-			error = "WinHTTP session failed: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrWinHttpSession + WideToUtf8(GetLastErrorText());
 			return nullptr;
 		}
 
 		connect = WinHttpConnect(session, host.c_str(), port, 0);
 		if (!connect) {
-			error = "WinHTTP connect failed: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrWinHttpConnect + WideToUtf8(GetLastErrorText());
 			return nullptr;
 		}
 
@@ -241,7 +262,7 @@ namespace {
 			WINHTTP_NO_REFERER,
 			WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
 		if (!request) {
-			error = "WinHTTP request failed: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrWinHttpRequest + WideToUtf8(GetLastErrorText());
 			return nullptr;
 		}
 
@@ -257,7 +278,7 @@ namespace {
 		if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
 			WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
 			!WinHttpReceiveResponse(request, nullptr)) {
-			error = "HTTP request failed: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrHttpRequest + WideToUtf8(GetLastErrorText());
 			return false;
 		}
 
@@ -267,12 +288,13 @@ namespace {
 			request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
 			WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize,
 			WINHTTP_NO_HEADER_INDEX)) {
-			error = "HTTP status read failed: " + WideToUtf8(GetLastErrorText());
+			error = lang.updateErrHttpStatusRead + WideToUtf8(GetLastErrorText());
 			return false;
 		}
 
 		if (statusCode < 200 || statusCode >= 300) {
-			error = "GitHub returned HTTP " + std::to_string(statusCode);
+			error = FormatTr(lang.updateErrHttpStatus,
+				static_cast<unsigned int>(statusCode));
 			return false;
 		}
 
@@ -293,7 +315,7 @@ namespace {
 				std::string chunk(available, '\0');
 				DWORD read = 0;
 				if (!WinHttpReadData(request, chunk.data(), available, &read)) {
-					error = "HTTP read failed: " + WideToUtf8(GetLastErrorText());
+					error = lang.updateErrHttpRead + WideToUtf8(GetLastErrorText());
 					data.clear();
 					break;
 				}
@@ -334,7 +356,7 @@ namespace {
 			file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
 				FILE_ATTRIBUTE_NORMAL, nullptr);
 			if (file == INVALID_HANDLE_VALUE) {
-				error = "Cannot create update file: " + WideToUtf8(GetLastErrorText());
+				error = lang.updateErrCreateFile + WideToUtf8(GetLastErrorText());
 			}
 			else {
 				ok = true;
@@ -344,7 +366,7 @@ namespace {
 					std::vector<char> buffer(available);
 					DWORD read = 0;
 					if (!WinHttpReadData(request, buffer.data(), available, &read)) {
-						error = "Download read failed: " + WideToUtf8(GetLastErrorText());
+						error = lang.updateErrDownloadRead + WideToUtf8(GetLastErrorText());
 						ok = false;
 						break;
 					}
@@ -352,7 +374,7 @@ namespace {
 					DWORD written = 0;
 					if (!WriteFile(file, buffer.data(), read, &written, nullptr) ||
 						written != read) {
-						error = "Download write failed: " + WideToUtf8(GetLastErrorText());
+						error = lang.updateErrDownloadWrite + WideToUtf8(GetLastErrorText());
 						ok = false;
 						break;
 					}
@@ -630,8 +652,8 @@ namespace {
 		DeleteFileW(backup.c_str());
 		if (!MoveFileExW(target.c_str(), backup.c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-			SetState(UpdatePhase::Failed,
-				"Cannot prepare for update: " + WideToUtf8(GetLastErrorText()));
+			SetState(UpdatePhase::Failed, lang.updateErrPrepareFailed +
+				WideToUtf8(GetLastErrorText()));
 			return;
 		}
 
@@ -647,15 +669,15 @@ namespace {
 
 		if (!copied) {
 			MoveFileExW(backup.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING);
-			SetState(UpdatePhase::Failed,
-				"Cannot write update file: " + WideToUtf8(GetLastErrorText()));
+			SetState(UpdatePhase::Failed, lang.updateErrWriteFailed +
+				WideToUtf8(GetLastErrorText()));
 			return;
 		}
 
 		{
 			std::lock_guard<std::mutex> lock(g_updateMutex);
 			g_updateState.phase = UpdatePhase::Restarting;
-			g_updateState.message = "Update applied, restarting...";
+			g_updateState.message = lang.updateMsgRestarting;
 		}
 
 		std::wstring dir = target.substr(0, target.find_last_of(L"\\/"));
@@ -673,21 +695,20 @@ namespace {
 
 	void RunFullUpdate(const ReleaseInfo& info) {
 		if (info.downloadUrl.empty()) {
-			SetState(UpdatePhase::Available,
-				"Update available, but the release has no downloadable asset");
+			SetState(UpdatePhase::Available, lang.updateErrNoAsset);
 			OpenLatestReleasePage();
 			return;
 		}
 
-		SetState(UpdatePhase::Downloading, "Downloading update...");
+		SetState(UpdatePhase::Downloading, lang.updateMsgDownloading);
 		std::wstring path = GetTempUpdatePath(info.assetName);
 		std::string error;
 		if (!DownloadUrlToFile(info.downloadUrl, path, error, SetDownloadProgress)) {
-			SetState(UpdatePhase::Failed, "Update download failed: " + error);
+			SetState(UpdatePhase::Failed, lang.updateErrDownloadFailed + error);
 			return;
 		}
 
-		SetState(UpdatePhase::Installing, "Installing update...");
+		SetState(UpdatePhase::Installing, lang.updateMsgInstalling);
 
 		std::wstring srcExe = path;
 		if (EndsWithI(path, L".zip")) {
@@ -699,8 +720,7 @@ namespace {
 
 			std::wstring innerExe;
 			if (!ExtractZipFirstExe(path, extractDir, innerExe)) {
-				SetState(UpdatePhase::Failed,
-					"Cannot extract update archive. Opening release page.");
+				SetState(UpdatePhase::Failed, lang.updateErrExtractFailed);
 				ShellExecuteW(nullptr, L"open", extractDir.c_str(), nullptr, nullptr,
 					SW_SHOWNORMAL);
 				OpenLatestReleasePage();
@@ -713,18 +733,18 @@ namespace {
 	}
 
 	void CheckWorker() {
-		SetState(UpdatePhase::Checking, "Checking GitHub releases...");
+		SetState(UpdatePhase::Checking, lang.updateMsgChecking);
 
 		std::string error;
 		auto json = HttpGetString(kRepoApiUrl, error);
 		if (!json) {
-			SetState(UpdatePhase::Failed, "Update check failed: " + error);
+			SetState(UpdatePhase::Failed, lang.updateErrCheckFailed + error);
 			return;
 		}
 
 		auto info = ParseReleaseInfo(*json);
 		if (!info) {
-			SetState(UpdatePhase::Failed, "Cannot parse GitHub release info");
+			SetState(UpdatePhase::Failed, lang.updateErrParseFailed);
 			return;
 		}
 
@@ -741,20 +761,19 @@ namespace {
 
 		if (!IsRemoteNewer(info->tagName, APP_VERSION_STR)) {
 			SetState(UpdatePhase::UpToDate,
-				"Current version is up to date (" APP_VERSION_STR ")");
+				FormatTr(lang.updateMsgUpToDate, APP_VERSION_STR));
 			return;
 		}
 
 		{
 			std::lock_guard<std::mutex> lock(g_updateMutex);
 			g_updateState.phase = UpdatePhase::Available;
-			g_updateState.message = "Update available: " + info->tagName +
-				" (current " APP_VERSION_STR
-				"). Click Update to install.";
+			g_updateState.message = FormatTr(lang.updateMsgAvailable,
+				info->tagName.c_str(), APP_VERSION_STR);
 		}
 	}
 
-}  // namespace
+}
 
 void CleanupUpdateArtifacts() { DeleteOldUpdateBackups(); }
 
@@ -764,7 +783,7 @@ void StartUpdateCheck() {
 		std::lock_guard<std::mutex> lock(g_updateMutex);
 		if (IsBusyPhase(g_updateState.phase)) return;
 		g_updateState.phase = UpdatePhase::Checking;
-		g_updateState.message = "Checking GitHub releases...";
+		g_updateState.message = lang.updateMsgChecking;
 	}
 
 	std::thread(CheckWorker).detach();
@@ -802,7 +821,9 @@ UpdateStatus GetUpdateStatus() {
 	std::lock_guard<std::mutex> lock(g_updateMutex);
 	UpdateStatus status;
 	status.phase = g_updateState.phase;
-	status.message = g_updateState.message;
+
+	status.message = g_updateState.message.empty() ? lang.updateMsgReady
+		: g_updateState.message;
 	status.latestVersion = g_updateState.latestVersion;
 	status.downloadProgress = g_updateState.downloadProgress;
 	status.downloadedBytes = g_updateState.downloadedBytes;
