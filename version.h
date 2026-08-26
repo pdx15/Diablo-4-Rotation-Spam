@@ -3,9 +3,9 @@
 #define APP_VER_MAJOR 1
 #define APP_VER_MINOR 0
 #define APP_VER_PATCH 4
-#define APP_VER_BUILD 3
+#define APP_VER_BUILD 4
 
-#define APP_VERSION_STR "1.0.4.3"
+#define APP_VERSION_STR "1.0.4.4"
 
 #define APP_COMPANY "Yarche"
 #define APP_FILE_DESC "Diablo 4 Rotation Spam"
