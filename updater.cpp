@@ -2,10 +2,9 @@
 
 // windows.h MUST come first: shellapi.h/shldisp.h depend on it.
 // Do not sort these includes alphabetically.
-#include <windows.h>
-
 #include <shellapi.h>
 #include <shldisp.h>
+#include <windows.h>
 #include <winhttp.h>
 
 #include "version.h"
@@ -169,11 +168,11 @@ void SetDownloadProgress(std::uint64_t downloaded, std::uint64_t total) {
   }
   if (total > 0) {
     g_updateState.message = "Downloading update... " +
-        std::to_string(downloaded / 1024) + " KB / " +
-        std::to_string(total / 1024) + " KB";
+                            std::to_string(downloaded / 1024) + " KB / " +
+                            std::to_string(total / 1024) + " KB";
   } else {
-    g_updateState.message = "Downloading update... " +
-        std::to_string(downloaded / 1024) + " KB";
+    g_updateState.message =
+        "Downloading update... " + std::to_string(downloaded / 1024) + " KB";
   }
 }
 
@@ -322,12 +321,13 @@ bool DownloadUrlToFile(const std::string& url, const std::wstring& path,
   std::uint64_t downloaded = 0;
 
   if (request && SendAndCheckStatus(request, error)) {
-    wchar_t contentLength[64] = {};
+    DWORD contentLength = 0;
     DWORD clSize = sizeof(contentLength);
-    if (WinHttpQueryHeadersW(request, WINHTTP_QUERY_CONTENT_LENGTH,
-                             WINHTTP_HEADER_NAME_BY_INDEX, contentLength,
-                             &clSize, WINHTTP_NO_HEADER_INDEX)) {
-      totalBytes = static_cast<std::uint64_t>(_wtoi64(contentLength));
+    if (WinHttpQueryHeaders(
+            request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+            WINHTTP_HEADER_NAME_BY_INDEX, &contentLength, &clSize,
+            WINHTTP_NO_HEADER_INDEX)) {
+      totalBytes = static_cast<std::uint64_t>(contentLength);
     }
 
     file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
@@ -740,8 +740,9 @@ void CheckWorker() {
   {
     std::lock_guard<std::mutex> lock(g_updateMutex);
     g_updateState.phase = UpdatePhase::Available;
-    g_updateState.message =
-        "Update available: " + info->tagName + " (current " APP_VERSION_STR "). Click Update to install.";
+    g_updateState.message = "Update available: " + info->tagName +
+                            " (current " APP_VERSION_STR
+                            "). Click Update to install.";
   }
 }
 
