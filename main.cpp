@@ -13,6 +13,8 @@
 #include "imgui/imgui_impl_dx11.h"
 #include "imgui/imgui_impl_win32.h"
 #include "overlay_utils.h"
+#include "updater.h"
+#include "version.h"
 
 extern LocStrings lang;
 extern std::atomic<bool> isScriptActive;
@@ -39,6 +41,7 @@ extern std::string settingsKeyName;
 extern int keyToCaptureType;
 extern std::vector<ProfileConfig> profiles;
 extern int activeProfileIndex;
+extern bool autoUpdateEnabled;
 
 static char profileNameBuffer[64] = "";
 static int lastProfileIndex = -1;
@@ -62,6 +65,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow) {
   LoadLanguage();
   LoadConfig();
+  if (autoUpdateEnabled) StartUpdateCheck(true);
   std::thread(CoreMacroLoop).detach();
   std::thread(GlobalHotkeyMonitor).detach();
 
@@ -72,7 +76,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
   HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
                               L"OverlayClass", L"Overlay", WS_POPUP, 50, 50,
-                              780, 440, nullptr, nullptr, hInstance, nullptr);
+                              1100, 760, nullptr, nullptr, hInstance, nullptr);
   SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 
   if (!CreateDeviceD3D(hwnd)) {
@@ -199,11 +203,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::Text(lang.captureKeyDesc.c_str());
         ImGui::End();
       } else if (showSettingsWindow) {
-        ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(520, 440), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(460, 320), ImVec2(900, 720));
         ImGui::Begin("Settings Panel", &showSettingsWindow,
-                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove);
+                     ImGuiWindowFlags_NoCollapse);
 
         ImGui::Text(lang.settingsTitle.c_str());
         if (!profiles.empty()) {
@@ -259,6 +263,39 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
           if (ImGui::Button(lang.btnDeleteProfile.c_str()))
             DeleteActiveProfile();
         }
+
+        ImGui::Separator();
+        if (ImGui::Checkbox(lang.chkAutoUpdate.c_str(), &autoUpdateEnabled)) {
+          SaveConfig();
+          if (autoUpdateEnabled) StartUpdateCheck(true);
+        }
+        ImGui::SameLine();
+        bool updateBusy = IsUpdateBusy();
+        if (updateBusy) ImGui::BeginDisabled();
+        if (ImGui::Button(lang.btnCheckUpdate.c_str())) StartUpdateCheck(false);
+        if (updateBusy) ImGui::EndDisabled();
+
+        UpdateStatus updateStatus = GetUpdateStatus();
+        ImGui::Text("%s %s", lang.updateCurrentVersion.c_str(),
+                    APP_VERSION_STR);
+        ImGui::TextWrapped("%s %s", lang.updateStatus.c_str(),
+                           updateStatus.message.c_str());
+
+        bool canDownload = updateStatus.phase == UpdatePhase::Available &&
+                           updateStatus.hasDownload && !updateBusy;
+        if (!canDownload) ImGui::BeginDisabled();
+        if (ImGui::Button(lang.btnDownloadUpdate.c_str()))
+          StartUpdateDownload();
+        if (!canDownload) ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (!updateStatus.canInstall) ImGui::BeginDisabled();
+        if (ImGui::Button(lang.btnInstallUpdate.c_str()))
+          InstallDownloadedUpdate();
+        if (!updateStatus.canInstall) ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (ImGui::Button(lang.btnOpenRelease.c_str())) OpenLatestReleasePage();
 
         ImGui::Separator();
         if (ImGui::Button(

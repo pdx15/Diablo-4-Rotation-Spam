@@ -51,6 +51,13 @@ struct LocStrings {
   std::string lblFastLootHoldKey = "Fast Loot Hold Key: ";
   std::string lblFastLootClickKey = "Fast Loot Click Key: ";
   std::string lblFastLootTimer = "Fast Loot Timer (ms)";
+  std::string chkAutoUpdate = "Auto update";
+  std::string updateCurrentVersion = "Current version:";
+  std::string updateStatus = "Update status:";
+  std::string btnCheckUpdate = "Check";
+  std::string btnDownloadUpdate = "Download";
+  std::string btnInstallUpdate = "Install";
+  std::string btnOpenRelease = "Release page";
 };
 
 struct ProfileConfig {

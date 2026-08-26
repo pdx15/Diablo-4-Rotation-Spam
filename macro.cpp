@@ -41,6 +41,7 @@ bool showSettingsWindow = false;
 bool isCapturing = false;
 bool isCapturingCoordinates = false;
 std::recursive_mutex settingsMutex;
+bool autoUpdateEnabled = false;
 
 std::vector<SpamKey> spamKeys;
 int combatMouseTrigger = 1;
@@ -372,6 +373,7 @@ void StoreGlobalsInActiveProfile() {
 }
 
 void ResetToDefaultConfig() {
+  autoUpdateEnabled = false;
   toggleHotkey = VK_XBUTTON2;
   toggleKeyName = "Mouse5";
   settingsHotkey = VK_F5;
@@ -406,8 +408,9 @@ void SaveConfig() {
   std::ofstream out(GetConfigPath(), std::ios::trunc);
   if (!out.is_open()) return;
 
-  out << "version=2\n";
+  out << "version=3\n";
   out << "activeProfile=" << activeProfileIndex << "\n";
+  out << "autoUpdateEnabled=" << autoUpdateEnabled << "\n";
   out << "toggleHotkey=" << toggleHotkey << "\n";
   out << "toggleKeyName=" << toggleKeyName << "\n";
   out << "settingsHotkey=" << settingsHotkey << "\n";
@@ -497,6 +500,7 @@ bool LoadModernConfig() {
   toggleKeyName = ReadString(values, "toggleKeyName", "Mouse5");
   settingsHotkey = ReadInt(values, "settingsHotkey", VK_F5, 1, 255);
   settingsKeyName = ReadString(values, "settingsKeyName", "F5");
+  autoUpdateEnabled = ReadBool(values, "autoUpdateEnabled", false);
 
   int profileCount = ReadInt(values, "profileCount", 1, 1, 16);
   profiles.clear();
@@ -919,5 +923,19 @@ void LoadLanguage() {
       lang.lblFastLootClickKey = val;
     else if (key == "lblFastLootTimer")
       lang.lblFastLootTimer = val;
+    else if (key == "chkAutoUpdate")
+      lang.chkAutoUpdate = val;
+    else if (key == "updateCurrentVersion")
+      lang.updateCurrentVersion = val;
+    else if (key == "updateStatus")
+      lang.updateStatus = val;
+    else if (key == "btnCheckUpdate")
+      lang.btnCheckUpdate = val;
+    else if (key == "btnDownloadUpdate")
+      lang.btnDownloadUpdate = val;
+    else if (key == "btnInstallUpdate")
+      lang.btnInstallUpdate = val;
+    else if (key == "btnOpenRelease")
+      lang.btnOpenRelease = val;
   }
 }
