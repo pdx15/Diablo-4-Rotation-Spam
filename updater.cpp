@@ -1,5 +1,6 @@
 #include "updater.h"
 
+#include <shldisp.h>
 #include <windows.h>
 #include <winhttp.h>
 
@@ -14,7 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
+#include <cwctype>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -23,6 +24,9 @@
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "uuid.lib")
 
 namespace {
 
@@ -30,6 +34,8 @@ constexpr char kRepoApiUrl[] =
     "https://api.github.com/repos/pdx15/Diablo-4-Rotation-Spam/releases/latest";
 constexpr wchar_t kLatestReleaseUrl[] =
     L"https://github.com/pdx15/Diablo-4-Rotation-Spam/releases/latest";
+
+constexpr LONG kCopyHereNoUi = 1024 | 512 | 16 | 4;
 
 struct ReleaseInfo {
   std::string tagName;
@@ -65,8 +71,8 @@ std::wstring Utf8ToWide(const std::string& text) {
 std::string WideToUtf8(const std::wstring& text) {
   if (text.empty()) return {};
   int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(),
-                                static_cast<int>(text.size()), nullptr, 0,
-                                nullptr, nullptr);
+                                 static_cast<int>(text.size()), nullptr, 0,
+                                 nullptr, nullptr);
   if (size <= 0) return {};
   std::string out(static_cast<size_t>(size), '\0');
   WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
@@ -145,9 +151,9 @@ HINTERNET OpenRequest(const std::string& url, HINTERNET& session,
   bool secure = false;
   if (!CrackUrl(url, host, path, port, secure, error)) return nullptr;
 
-  session = WinHttpOpen(L"d4rt/" APP_VERSION_STR,
-                        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+  session =
+      WinHttpOpen(L"d4rt/" APP_VERSION_STR, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
   if (!session) {
     error = "WinHTTP session failed: " + WideToUtf8(GetLastErrorText());
     return nullptr;
@@ -160,10 +166,9 @@ HINTERNET OpenRequest(const std::string& url, HINTERNET& session,
   }
 
   DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
-  HINTERNET request =
-      WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr,
-                         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                         flags);
+  HINTERNET request = WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr,
+                                         WINHTTP_NO_REFERER,
+                                         WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
   if (!request) {
     error = "WinHTTP request failed: " + WideToUtf8(GetLastErrorText());
     return nullptr;
@@ -187,10 +192,10 @@ bool SendAndCheckStatus(HINTERNET request, std::string& error) {
 
   DWORD statusCode = 0;
   DWORD statusSize = sizeof(statusCode);
-  if (!WinHttpQueryHeaders(request,
-                           WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                           WINHTTP_HEADER_NAME_BY_INDEX, &statusCode,
-                           &statusSize, WINHTTP_NO_HEADER_INDEX)) {
+  if (!WinHttpQueryHeaders(
+          request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+          WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize,
+          WINHTTP_NO_HEADER_INDEX)) {
     error = "HTTP status read failed: " + WideToUtf8(GetLastErrorText());
     return false;
   }
@@ -333,6 +338,18 @@ bool EndsWith(const std::string& text, const std::string& suffix) {
   return std::equal(suffix.rbegin(), suffix.rend(), text.rbegin());
 }
 
+bool EndsWithI(const std::wstring& text, const std::wstring& suffix) {
+  if (text.size() < suffix.size()) return false;
+  std::wstring lowText = text, lowSuffix = suffix;
+  std::transform(
+      lowText.begin(), lowText.end(), lowText.begin(),
+      [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+  std::transform(
+      lowSuffix.begin(), lowSuffix.end(), lowSuffix.begin(),
+      [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+  return std::equal(lowSuffix.rbegin(), lowSuffix.rend(), lowText.rbegin());
+}
+
 std::optional<ReleaseInfo> ParseReleaseInfo(const std::string& json) {
   ReleaseInfo info;
   auto tag = ExtractJsonString(json, "tag_name");
@@ -365,8 +382,9 @@ std::optional<ReleaseInfo> ParseReleaseInfo(const std::string& json) {
   if (selected) {
     info.downloadUrl = *selected;
     size_t slash = info.downloadUrl.find_last_of('/');
-    info.assetName = slash == std::string::npos ? info.downloadUrl
-                                                : info.downloadUrl.substr(slash + 1);
+    info.assetName = slash == std::string::npos
+                         ? info.downloadUrl
+                         : info.downloadUrl.substr(slash + 1);
   }
 
   return info;
@@ -421,78 +439,132 @@ std::wstring GetTempUpdatePath(const std::string& assetName) {
   return std::wstring(tempDir) + L"d4rt_" + wideName;
 }
 
-std::wstring QuoteCmdPath(const std::wstring& path) {
-  std::wstring out = path;
-  for (wchar_t& c : out) {
-    if (c == L'"') c = L'\'';
-  }
-  return out;
+bool FindFirstExeRecursive(const std::wstring& root, std::wstring& outExe) {
+  std::wstring pattern = root + L"\\*";
+  WIN32_FIND_DATAW fd;
+  HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+  if (h == INVALID_HANDLE_VALUE) return false;
+  bool found = false;
+  do {
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+      if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0)
+        continue;
+      if (FindFirstExeRecursive(root + L"\\" + fd.cFileName, outExe)) {
+        found = true;
+        break;
+      }
+    } else if (EndsWithI(fd.cFileName, L".exe")) {
+      outExe = root + L"\\" + fd.cFileName;
+      found = true;
+      break;
+    }
+  } while (FindNextFileW(h, &fd));
+  FindClose(h);
+  return found;
 }
 
-std::wstring PowerShellLiteral(const std::wstring& text) {
-  std::wstring out = L"'";
-  for (wchar_t c : text) {
-    if (c == L'\'') out += L"''";
-    else out.push_back(c);
+bool ExtractZipFirstExe(const std::wstring& zipPath,
+                        const std::wstring& destDir, std::wstring& outExe) {
+  HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  bool comInit = SUCCEEDED(hr);
+  bool ok = false;
+
+  IShellDispatch* pShell = nullptr;
+  if (SUCCEEDED(CoCreateInstance(CLSID_Shell, nullptr, CLSCTX_INPROC_SERVER,
+                                 IID_IShellDispatch,
+                                 reinterpret_cast<void**>(&pShell))) &&
+      pShell) {
+    Folder* pDest = nullptr;
+    VARIANT vDest;
+    VariantInit(&vDest);
+    vDest.vt = VT_BSTR;
+    vDest.bstrVal = SysAllocString(destDir.c_str());
+    if (vDest.bstrVal && SUCCEEDED(pShell->NameSpace(vDest, &pDest)) && pDest) {
+      Folder* pZip = nullptr;
+      VARIANT vZip;
+      VariantInit(&vZip);
+      vZip.vt = VT_BSTR;
+      vZip.bstrVal = SysAllocString(zipPath.c_str());
+      if (vZip.bstrVal && SUCCEEDED(pShell->NameSpace(vZip, &pZip)) && pZip) {
+        FolderItems* pItems = nullptr;
+        if (SUCCEEDED(pZip->Items(&pItems)) && pItems) {
+          VARIANT vItem;
+          VariantInit(&vItem);
+          vItem.vt = VT_DISPATCH;
+          vItem.pdispVal = pItems;
+
+          VARIANT vOpt;
+          VariantInit(&vOpt);
+          vOpt.vt = VT_I4;
+          vOpt.lVal = kCopyHereNoUi;
+
+          pDest->CopyHere(vItem, vOpt);
+          VariantClear(&vItem);
+          VariantClear(&vOpt);
+
+          for (int i = 0; i < 120; ++i) {
+            if (FindFirstExeRecursive(destDir, outExe)) {
+              ok = true;
+              break;
+            }
+            Sleep(250);
+          }
+          pItems->Release();
+        }
+        pZip->Release();
+      }
+      if (vZip.bstrVal) SysFreeString(vZip.bstrVal);
+      pDest->Release();
+    }
+    if (vDest.bstrVal) SysFreeString(vDest.bstrVal);
+    pShell->Release();
   }
-  out += L"'";
-  return out;
+
+  if (comInit) CoUninitialize();
+  return ok;
 }
 
-bool WriteInstallerScript(const std::wstring& assetPath,
-                          std::wstring& scriptPath) {
-  wchar_t tempDir[MAX_PATH] = {};
-  GetTempPathW(MAX_PATH, tempDir);
-  scriptPath = std::wstring(tempDir) + L"d4rt_apply_update.cmd";
+void ReplaceAndRestart(const std::wstring& srcExe) {
+  wchar_t curExe[MAX_PATH] = {};
+  GetModuleFileNameW(nullptr, curExe, MAX_PATH);
+  std::wstring target = curExe;
 
-  wchar_t exePath[MAX_PATH] = {};
-  GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-  std::wstring targetPath = exePath;
-  std::wstring unpackDir = std::wstring(tempDir) + L"d4rt_update_unpack";
-  DWORD pid = GetCurrentProcessId();
+  std::wstring backup = target + L".bak";
+  DeleteFileW(backup.c_str());
+  if (!MoveFileExW(target.c_str(), backup.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    SetState(UpdatePhase::Failed,
+             "Cannot prepare for update: " + WideToUtf8(GetLastErrorText()));
+    return;
+  }
 
-  std::wofstream out(scriptPath, std::ios::trunc);
-  if (!out.is_open()) return false;
+  bool copied = false;
+  for (int attempt = 0; attempt < 10 && !copied; ++attempt) {
+    if (CopyFileW(srcExe.c_str(), target.c_str(), FALSE)) {
+      copied = true;
+    } else {
+      Sleep(200);
+    }
+  }
 
-  std::wstring asset = QuoteCmdPath(assetPath);
-  std::wstring target = QuoteCmdPath(targetPath);
-  std::wstring unpack = QuoteCmdPath(unpackDir);
-  std::wstring psCommand =
-      L"Remove-Item -LiteralPath " + PowerShellLiteral(unpackDir) +
-      L" -Recurse -Force -ErrorAction SilentlyContinue; "
-      L"Expand-Archive -LiteralPath " +
-      PowerShellLiteral(assetPath) + L" -DestinationPath " +
-      PowerShellLiteral(unpackDir) +
-      L" -Force; $exe = Get-ChildItem -LiteralPath " +
-      PowerShellLiteral(unpackDir) +
-      L" -Filter '*.exe' -Recurse | Select-Object -First 1; "
-      L"if ($null -eq $exe) { exit 2 }; "
-      L"Copy-Item -LiteralPath $exe.FullName -Destination " +
-      PowerShellLiteral(targetPath) + L" -Force";
+  if (!copied) {
+    MoveFileExW(backup.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING);
+    SetState(UpdatePhase::Failed,
+             "Cannot write update file: " + WideToUtf8(GetLastErrorText()));
+    return;
+  }
 
-  out << L"@echo off\n";
-  out << L"setlocal\n";
-  out << L"set \"PID=" << pid << L"\"\n";
-  out << L"set \"ASSET=" << asset << L"\"\n";
-  out << L"set \"TARGET=" << target << L"\"\n";
-  out << L"set \"WORK=" << unpack << L"\"\n";
-  out << L":wait\n";
-  out << L"tasklist /FI \"PID eq %PID%\" | find \"%PID%\" >nul\n";
-  out << L"if not errorlevel 1 (\n";
-  out << L"  timeout /t 1 /nobreak >nul\n";
-  out << L"  goto wait\n";
-  out << L")\n";
-  out << L"if /I \"%ASSET:~-4%\"==\".zip\" (\n";
-  out << L"  powershell -NoProfile -ExecutionPolicy Bypass -Command \""
-      << psCommand << L"\"\n";
-  out << L") else (\n";
-  out << L"  copy /Y \"%ASSET%\" \"%TARGET%\" >nul\n";
-  out << L")\n";
-  out << L"start \"\" \"%TARGET%\"\n";
-  out << L"del \"%ASSET%\" >nul 2>nul\n";
-  out << L"rmdir /S /Q \"%WORK%\" >nul 2>nul\n";
-  out << L"del \"%~f0\" >nul 2>nul\n";
-  return true;
+  std::wstring dir = target.substr(0, target.find_last_of(L"\\/"));
+  STARTUPINFOW si = {};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi = {};
+  if (CreateProcessW(target.c_str(), nullptr, nullptr, nullptr, FALSE, 0,
+                     nullptr, dir.empty() ? nullptr : dir.c_str(), &si, &pi)) {
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+  }
+
+  ExitProcess(0);
 }
 
 void DownloadReleaseAsset(const ReleaseInfo& info) {
@@ -516,7 +588,7 @@ void DownloadReleaseAsset(const ReleaseInfo& info) {
   g_updateState.phase = UpdatePhase::Downloaded;
   g_updateState.downloadedPath = path;
   g_updateState.canInstall = true;
-  g_updateState.message = "Update downloaded. Restart to install.";
+  g_updateState.message = "Update downloaded. Click Install to apply.";
 }
 
 void CheckWorker(bool autoDownload) {
@@ -602,25 +674,32 @@ void InstallDownloadedUpdate() {
     if (!g_updateState.canInstall || g_updateState.downloadedPath.empty())
       return;
     g_updateState.phase = UpdatePhase::Installing;
-    g_updateState.message = "Restarting to install update...";
+    g_updateState.message = "Installing update...";
     assetPath = g_updateState.downloadedPath;
   }
 
-  std::wstring scriptPath;
-  if (!WriteInstallerScript(assetPath, scriptPath)) {
-    SetState(UpdatePhase::Failed, "Cannot create update installer script");
-    return;
+  std::wstring srcExe = assetPath;
+  if (EndsWithI(assetPath, L".zip")) {
+    wchar_t tempDir[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, tempDir);
+    std::wstring extractDir = std::wstring(tempDir) + L"d4rt_unzip_" +
+                              std::to_wstring(GetCurrentProcessId());
+    CreateDirectoryW(extractDir.c_str(), nullptr);
+
+    std::wstring innerExe;
+    if (!ExtractZipFirstExe(assetPath, extractDir, innerExe)) {
+      SetState(UpdatePhase::Failed,
+               "Cannot extract update archive. Open the folder to install "
+               "manually.");
+      ShellExecuteW(nullptr, L"open", extractDir.c_str(), nullptr, nullptr,
+                    SW_SHOWNORMAL);
+      OpenLatestReleasePage();
+      return;
+    }
+    srcExe = innerExe;
   }
 
-  std::wstring params = L"/c \"" + scriptPath + L"\"";
-  HINSTANCE result = ShellExecuteW(nullptr, L"open", L"cmd.exe",
-                                  params.c_str(), nullptr, SW_HIDE);
-  if (reinterpret_cast<intptr_t>(result) <= 32) {
-    SetState(UpdatePhase::Failed, "Cannot start update installer script");
-    return;
-  }
-
-  ExitProcess(0);
+  ReplaceAndRestart(srcExe);
 }
 
 void OpenLatestReleasePage() {
