@@ -1,8 +1,9 @@
 #include "updater.h"
 
+#include <windows.h>
+
 #include <shellapi.h>
 #include <shldisp.h>
-#include <windows.h>
 #include <winhttp.h>
 
 #include "version.h"
@@ -67,11 +68,12 @@ namespace {
 	std::mutex g_updateMutex;
 	UpdaterState g_updateState;
 
-	std::string FormatTr(const std::string& format, ...) {
+	std::string FormatTr(const char* format, ...) {
+		if (!format) return {};
 		va_list args;
 		va_start(args, format);
 		char buffer[512];
-		int written = vsnprintf(buffer, sizeof(buffer), format.c_str(), args);
+		int written = vsnprintf(buffer, sizeof(buffer), format, args);
 		va_end(args);
 		if (written < 0) return format;
 		const size_t length = static_cast<size_t>(written) < sizeof(buffer) - 1
@@ -187,13 +189,13 @@ namespace {
 		}
 		if (total > 0) {
 			g_updateState.message = FormatTr(
-				lang.updateMsgDownloadProgress,
+				lang.updateMsgDownloadProgress.c_str(),
 				static_cast<unsigned long long>(downloaded / 1024),
 				static_cast<unsigned long long>(total / 1024));
 		}
 		else {
 			g_updateState.message = FormatTr(
-				lang.updateMsgDownloadProgressUnknown,
+				lang.updateMsgDownloadProgressUnknown.c_str(),
 				static_cast<unsigned long long>(downloaded / 1024));
 		}
 	}
@@ -293,7 +295,8 @@ namespace {
 		}
 
 		if (statusCode < 200 || statusCode >= 300) {
-			error = FormatTr(lang.updateErrHttpStatus,
+			error = FormatTr(lang.updateErrHttpStatus.c_str(),
+
 				static_cast<unsigned int>(statusCode));
 			return false;
 		}
@@ -761,14 +764,14 @@ namespace {
 
 		if (!IsRemoteNewer(info->tagName, APP_VERSION_STR)) {
 			SetState(UpdatePhase::UpToDate,
-				FormatTr(lang.updateMsgUpToDate, APP_VERSION_STR));
+				FormatTr(lang.updateMsgUpToDate.c_str(), APP_VERSION_STR));
 			return;
 		}
 
 		{
 			std::lock_guard<std::mutex> lock(g_updateMutex);
 			g_updateState.phase = UpdatePhase::Available;
-			g_updateState.message = FormatTr(lang.updateMsgAvailable,
+			g_updateState.message = FormatTr(lang.updateMsgAvailable.c_str(),
 				info->tagName.c_str(), APP_VERSION_STR);
 		}
 	}
