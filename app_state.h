@@ -62,6 +62,41 @@ struct LocStrings {
   std::string btnOpenRelease = "Release page";
   std::string updateDownloading = "Downloading...";
   std::string updateInstalling = "Installing...";
+  // Updater status / error messages. Keys with printf-style placeholders
+  // (%s, %u, %llu) are formatted at runtime; keys ending with ": " are
+  // concatenated with a technical error detail.
+  std::string updatePopupTitle = "Update Available";
+  std::string updateMsgReady = "Ready";
+  std::string updateMsgChecking = "Checking GitHub releases...";
+  std::string updateMsgUpToDate = "Current version is up to date (%s)";
+  std::string updateMsgAvailable =
+      "Update available: %s (current %s). Click Update to install.";
+  std::string updateMsgDownloading = "Downloading update...";
+  std::string updateMsgDownloadProgress =
+      "Downloading update... %llu KB / %llu KB";
+  std::string updateMsgDownloadProgressUnknown = "Downloading update... %llu KB";
+  std::string updateMsgInstalling = "Installing update...";
+  std::string updateMsgRestarting = "Update applied, restarting...";
+  std::string updateErrCheckFailed = "Update check failed: ";
+  std::string updateErrParseFailed = "Cannot parse GitHub release info";
+  std::string updateErrNoAsset =
+      "Update available, but the release has no downloadable asset";
+  std::string updateErrDownloadFailed = "Update download failed: ";
+  std::string updateErrExtractFailed =
+      "Cannot extract update archive. Opening release page.";
+  std::string updateErrPrepareFailed = "Cannot prepare for update: ";
+  std::string updateErrWriteFailed = "Cannot write update file: ";
+  std::string updateErrInvalidUrl = "Invalid update URL: ";
+  std::string updateErrWinHttpSession = "WinHTTP session failed: ";
+  std::string updateErrWinHttpConnect = "WinHTTP connect failed: ";
+  std::string updateErrWinHttpRequest = "WinHTTP request failed: ";
+  std::string updateErrHttpRequest = "HTTP request failed: ";
+  std::string updateErrHttpStatusRead = "HTTP status read failed: ";
+  std::string updateErrHttpStatus = "GitHub returned HTTP %u";
+  std::string updateErrHttpRead = "HTTP read failed: ";
+  std::string updateErrCreateFile = "Cannot create update file: ";
+  std::string updateErrDownloadRead = "Download read failed: ";
+  std::string updateErrDownloadWrite = "Download write failed: ";
 };
 
 struct ProfileConfig {

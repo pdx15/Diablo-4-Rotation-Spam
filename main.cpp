@@ -304,18 +304,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
         UpdateStatus updateStatus = GetUpdateStatus();
 
+        // "###UpdateAvailable" keeps the ImGui popup ID stable while the
+        // visible title comes from the language file.
+        const std::string updatePopupTitle =
+            lang.updatePopupTitle + "###UpdateAvailable";
         if (updateStatus.phase == UpdatePhase::Available &&
             lastUpdatePhase != UpdatePhase::Available &&
             lastUpdatePhase != UpdatePhase::Downloading &&
             lastUpdatePhase != UpdatePhase::Installing &&
             lastUpdatePhase != UpdatePhase::Restarting) {
           updatePopupOpen = true;
-          ImGui::OpenPopup("Update Available");
+          ImGui::OpenPopup(updatePopupTitle.c_str());
         }
         lastUpdatePhase = updateStatus.phase;
 
         ImGui::SetNextWindowSize(ImVec2(400, 140), ImGuiCond_Always);
-        if (ImGui::BeginPopupModal("Update Available", &updatePopupOpen,
+        if (ImGui::BeginPopupModal(updatePopupTitle.c_str(), &updatePopupOpen,
                                    ImGuiWindowFlags_NoResize)) {
           char promptBuf[256];
           snprintf(promptBuf, sizeof(promptBuf), lang.updatePrompt.c_str(),

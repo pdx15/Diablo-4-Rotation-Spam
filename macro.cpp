@@ -945,5 +945,61 @@ void LoadLanguage() {
       lang.updateDownloading = val;
     else if (key == "updateInstalling")
       lang.updateInstalling = val;
+    else if (key == "updatePopupTitle")
+      lang.updatePopupTitle = val;
+    else if (key == "updateMsgReady")
+      lang.updateMsgReady = val;
+    else if (key == "updateMsgChecking")
+      lang.updateMsgChecking = val;
+    else if (key == "updateMsgUpToDate")
+      lang.updateMsgUpToDate = val;
+    else if (key == "updateMsgAvailable")
+      lang.updateMsgAvailable = val;
+    else if (key == "updateMsgDownloading")
+      lang.updateMsgDownloading = val;
+    else if (key == "updateMsgDownloadProgress")
+      lang.updateMsgDownloadProgress = val;
+    else if (key == "updateMsgDownloadProgressUnknown")
+      lang.updateMsgDownloadProgressUnknown = val;
+    else if (key == "updateMsgInstalling")
+      lang.updateMsgInstalling = val;
+    else if (key == "updateMsgRestarting")
+      lang.updateMsgRestarting = val;
+    else if (key == "updateErrCheckFailed")
+      lang.updateErrCheckFailed = val;
+    else if (key == "updateErrParseFailed")
+      lang.updateErrParseFailed = val;
+    else if (key == "updateErrNoAsset")
+      lang.updateErrNoAsset = val;
+    else if (key == "updateErrDownloadFailed")
+      lang.updateErrDownloadFailed = val;
+    else if (key == "updateErrExtractFailed")
+      lang.updateErrExtractFailed = val;
+    else if (key == "updateErrPrepareFailed")
+      lang.updateErrPrepareFailed = val;
+    else if (key == "updateErrWriteFailed")
+      lang.updateErrWriteFailed = val;
+    else if (key == "updateErrInvalidUrl")
+      lang.updateErrInvalidUrl = val;
+    else if (key == "updateErrWinHttpSession")
+      lang.updateErrWinHttpSession = val;
+    else if (key == "updateErrWinHttpConnect")
+      lang.updateErrWinHttpConnect = val;
+    else if (key == "updateErrWinHttpRequest")
+      lang.updateErrWinHttpRequest = val;
+    else if (key == "updateErrHttpRequest")
+      lang.updateErrHttpRequest = val;
+    else if (key == "updateErrHttpStatusRead")
+      lang.updateErrHttpStatusRead = val;
+    else if (key == "updateErrHttpStatus")
+      lang.updateErrHttpStatus = val;
+    else if (key == "updateErrHttpRead")
+      lang.updateErrHttpRead = val;
+    else if (key == "updateErrCreateFile")
+      lang.updateErrCreateFile = val;
+    else if (key == "updateErrDownloadRead")
+      lang.updateErrDownloadRead = val;
+    else if (key == "updateErrDownloadWrite")
+      lang.updateErrDownloadWrite = val;
   }
 }
