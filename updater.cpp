@@ -1,6 +1,9 @@
 #include "updater.h"
 
+// windows.h MUST come first: shellapi.h/shldisp.h depend on it.
+// Do not sort these includes alphabetically.
 #include <windows.h>
+
 #include <shellapi.h>
 #include <shldisp.h>
 #include <winhttp.h>
