@@ -1,7 +1,7 @@
 #pragma once
+#include <windows.h>
 #include <d3d11.h>
 #include <shellapi.h>
-#include <windows.h>
 
 #include "imgui/imgui.h"
 #include "resource.h"
