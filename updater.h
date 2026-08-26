@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 enum class UpdatePhase {
@@ -8,22 +9,23 @@ enum class UpdatePhase {
   UpToDate,
   Available,
   Downloading,
-  Downloaded,
   Installing,
-  Failed
+  Failed,
+  Restarting
 };
 
 struct UpdateStatus {
   UpdatePhase phase = UpdatePhase::Idle;
   std::string message;
   std::string latestVersion;
-  bool hasDownload = false;
-  bool canInstall = false;
+  float downloadProgress = 0.0f;
+  std::uint64_t downloadedBytes = 0;
+  std::uint64_t totalBytes = 0;
 };
 
-void StartUpdateCheck(bool autoDownload);
-void StartUpdateDownload();
-void InstallDownloadedUpdate();
+void CleanupUpdateArtifacts();
+void StartUpdateCheck();
+void StartUpdateProcess();
 void OpenLatestReleasePage();
 UpdateStatus GetUpdateStatus();
 bool IsUpdateBusy();

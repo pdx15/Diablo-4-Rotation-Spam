@@ -55,10 +55,13 @@ struct LocStrings {
   std::string chkAutoUpdate = "Auto update";
   std::string updateCurrentVersion = "Current version:";
   std::string updateStatus = "Update status:";
+  std::string updatePrompt = "A new version (%s) is available. Would you like to update now?";
   std::string btnCheckUpdate = "Check";
-  std::string btnDownloadUpdate = "Download";
-  std::string btnInstallUpdate = "Install";
+  std::string btnUpdate = "Update";
+  std::string btnLater = "Later";
   std::string btnOpenRelease = "Release page";
+  std::string updateDownloading = "Downloading...";
+  std::string updateInstalling = "Installing...";
 };
 
 struct ProfileConfig {
