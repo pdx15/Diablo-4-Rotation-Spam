@@ -1,8 +1,8 @@
 #include "updater.h"
 
-#include <shldisp.h>
-#include <shellapi.h>
 #include <windows.h>
+#include <shellapi.h>
+#include <shldisp.h>
 #include <winhttp.h>
 
 #include "version.h"
