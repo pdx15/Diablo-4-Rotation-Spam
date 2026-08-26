@@ -27,6 +27,7 @@ struct LocStrings {
   std::string captureKeyTitle = "KEY CAPTURE MODE:";
   std::string captureKeyDesc =
       "Press ANY key on your keyboard or side mouse buttons...";
+  std::string settingsWindowTitle = "Settings Panel";
   std::string settingsTitle = "Overlay Configuration:";
   std::string profile = "Profile:";
   std::string btnAddProfile = "Add Profile";

@@ -206,7 +206,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints(ImVec2(460, 320), ImVec2(900, 720));
-        ImGui::Begin("Settings Panel", &showSettingsWindow,
+        std::string settingsWindowTitle =
+            lang.settingsWindowTitle + "###SettingsPanel";
+        ImGui::Begin(settingsWindowTitle.c_str(), &showSettingsWindow,
                      ImGuiWindowFlags_NoCollapse);
 
         ImGui::Text(lang.settingsTitle.c_str());

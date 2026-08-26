@@ -875,6 +875,8 @@ void LoadLanguage() {
       lang.captureKeyTitle = val;
     else if (key == "captureKeyDesc")
       lang.captureKeyDesc = val;
+    else if (key == "settingsWindowTitle")
+      lang.settingsWindowTitle = val;
     else if (key == "settingsTitle")
       lang.settingsTitle = val;
     else if (key == "profile")

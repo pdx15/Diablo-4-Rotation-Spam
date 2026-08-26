@@ -8,6 +8,7 @@ captureCoordsTitle=РЕЖИМ ВЫБОРА ТОЧКИ ЗДОРОВЬЯ:
 captureCoordsDesc=Разверните Diablo 4 и кликните ЛКМ по сфере здоровья...
 captureKeyTitle=РЕЖИМ ЗАХВАТА КЛАВИШИ:
 captureKeyDesc=Нажмите ЛЮБУЮ кнопку на клавиатуре или боковую мыши...
+settingsWindowTitle=Панель настроек
 settingsTitle=Управление оверлеем:
 profile=Профиль:
 btnAddProfile=Добавить профиль

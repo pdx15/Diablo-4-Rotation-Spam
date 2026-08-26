@@ -8,6 +8,7 @@ captureCoordsTitle=HEALTH PIXEL SELECTION MODE:
 captureCoordsDesc=Switch to Diablo 4 and LEFT CLICK on your health sphere...
 captureKeyTitle=KEY CAPTURE MODE:
 captureKeyDesc=Press ANY key on your keyboard or side mouse buttons...
+settingsWindowTitle=Settings Panel
 settingsTitle=Overlay Configuration:
 profile=Profile:
 btnAddProfile=Add Profile
