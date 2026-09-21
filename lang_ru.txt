@@ -20,6 +20,7 @@ radioLmb=Зажата ЛКМ
 radioRmb=Зажата ПКМ
 radioAlways=Всегда
 chkGlobalHealth=Глобальный автохил по пикселю ХП
+chkGlobalHealthIndependent=Независимая работа
 lblHealthKey=Клавиша хила: 
 lblHealTimer=Таймер хила (мс)
 btnPickCoords=Указать точку ХП кликом

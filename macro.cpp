@@ -46,6 +46,7 @@ bool autoUpdateEnabled = false;
 std::vector<SpamKey> spamKeys;
 int combatMouseTrigger = 1;
 bool globalHealthCheckEnable = true;
+bool globalHealthIndependent = false;
 int healthVKey = 'Q';
 std::string healthKeyName = "Q";
 int healthDelayMs = 50;
@@ -70,6 +71,7 @@ int keyToCaptureType = -1;
 struct MacroSettingsSnapshot {
 	int combatMouseTrigger = 1;
 	bool globalHealthCheckEnable = true;
+	bool globalHealthIndependent = false;
 	int healthVKey = 'Q';
 	int healthDelayMs = 50;
 	int healthX = 960;
@@ -225,6 +227,7 @@ MacroSettingsSnapshot GetMacroSettingsSnapshot() {
 	std::lock_guard<std::recursive_mutex> lock(settingsMutex);
 	return { combatMouseTrigger,
 			globalHealthCheckEnable,
+			globalHealthIndependent,
 			healthVKey,
 			healthDelayMs,
 			healthX,
@@ -340,6 +343,7 @@ ProfileConfig MakeProfileFromGlobals(const std::string& name) {
 	profile.name = name;
 	profile.combatMouseTrigger = combatMouseTrigger;
 	profile.globalHealthCheckEnable = globalHealthCheckEnable;
+	profile.globalHealthIndependent = globalHealthIndependent;
 	profile.healthVKey = healthVKey;
 	profile.healthKeyName = healthKeyName;
 	profile.healthDelayMs = healthDelayMs;
@@ -357,6 +361,7 @@ ProfileConfig MakeProfileFromGlobals(const std::string& name) {
 void ApplyProfileToGlobals(const ProfileConfig& profile) {
 	combatMouseTrigger = profile.combatMouseTrigger;
 	globalHealthCheckEnable = profile.globalHealthCheckEnable;
+	globalHealthIndependent = profile.globalHealthIndependent;
 	healthVKey = profile.healthVKey;
 	healthKeyName = profile.healthKeyName;
 	healthDelayMs = profile.healthDelayMs;
@@ -386,6 +391,7 @@ void ResetToDefaultConfig() {
 	settingsKeyName = "F5";
 	combatMouseTrigger = 1;
 	globalHealthCheckEnable = true;
+	globalHealthIndependent = false;
 	healthVKey = 'Q';
 	healthKeyName = "Q";
 	healthDelayMs = 50;
@@ -431,6 +437,9 @@ void SaveConfig() {
 			<< "\n";
 		out << prefix
 			<< "globalHealthCheckEnable=" << profile.globalHealthCheckEnable
+			<< "\n";
+		out << prefix
+			<< "globalHealthIndependent=" << profile.globalHealthIndependent
 			<< "\n";
 		out << prefix << "healthVKey=" << profile.healthVKey << "\n";
 		out << prefix << "healthKeyName=" << profile.healthKeyName << "\n";
@@ -487,6 +496,8 @@ bool LoadLegacyConfig() {
 		}
 	}
 
+	// Legacy configs have no independent auto-heal setting.
+	globalHealthIndependent = false;
 	if (spamKeys.empty()) spamKeys = MakeDefaultSpamKeys();
 	profiles.clear();
 	profiles.push_back(MakeProfileFromGlobals("Default"));
@@ -520,6 +531,8 @@ bool LoadModernConfig() {
 			ReadInt(values, prefix + "combatMouseTrigger", -1, -1, 1);
 		profile.globalHealthCheckEnable =
 			ReadBool(values, prefix + "globalHealthCheckEnable", true);
+		profile.globalHealthIndependent =
+			ReadBool(values, prefix + "globalHealthIndependent", false);
 		profile.healthVKey = ReadInt(values, prefix + "healthVKey", 'Q', 1, 255);
 		profile.healthKeyName = ReadString(values, prefix + "healthKeyName", "Q");
 		profile.healthDelayMs =
@@ -666,8 +679,9 @@ void CoreMacroLoop() {
 				isMouseTriggerPressed = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 			}
 
+			// Independent auto-heal bypasses only the combat activation condition.
 			if (settings.globalHealthCheckEnable && !isHealthy && isScriptActive &&
-				isMouseTriggerPressed) {
+				(settings.globalHealthIndependent || isMouseTriggerPressed)) {
 				auto elapsedHealth =
 					std::chrono::duration_cast<std::chrono::milliseconds>(
 						now - lastHealthPressed)
@@ -915,6 +929,8 @@ void LoadLanguage() {
 			lang.radioAlways = val;
 		else if (key == "chkGlobalHealth")
 			lang.chkGlobalHealth = val;
+		else if (key == "chkGlobalHealthIndependent")
+			lang.chkGlobalHealthIndependent = val;
 		else if (key == "lblHealthKey")
 			lang.lblHealthKey = val;
 		else if (key == "lblHealTimer")

@@ -20,6 +20,7 @@ radioLmb=Hold LMB
 radioRmb=Hold RMB
 radioAlways=Always
 chkGlobalHealth=Global Auto-Heal by HP pixel
+chkGlobalHealthIndependent=Independent operation
 lblHealthKey=Heal Key: 
 lblHealTimer=Heal Timer (ms)
 btnPickCoords=Pick HP Point with Click

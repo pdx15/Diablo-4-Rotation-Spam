@@ -1,0 +1,120 @@
+name: Release
+run-name: Release ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.0.5.2 (3 or 4 numbers; optional v prefix)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize publication so two manual runs cannot race to replace Latest.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Test release preparation
+        run: python3 -m unittest discover -s tests -p 'test_release.py' -v
+
+      - name: Test macro behavior
+        run: |
+          mkdir -p out
+          c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-missing-field-initializers \
+            -pthread -Itests/win32_stubs tests/macro_regression.cpp -o out/macro_regression
+          ./out/macro_regression
+
+  release:
+    name: Build and publish Windows release
+    needs: test
+    # Matches the project's Visual Studio 2026 / v145 toolset.
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate and stamp release version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: python scripts/prepare_release.py "$env:INPUT_VERSION"
+
+      - name: Reject an existing tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          $tags = @(gh api --paginate "repos/$env:GH_REPO/releases?per_page=100" --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
+          if ($tags -contains $env:RELEASE_TAG) {
+            throw "Release $env:RELEASE_TAG already exists (including drafts). Choose a new version."
+          }
+          $refs = @(gh api "repos/$env:GH_REPO/git/matching-refs/tags/$env:RELEASE_TAG" --jq '.[].ref')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check existing tags.' }
+          if ($refs -contains "refs/tags/$env:RELEASE_TAG") {
+            throw "Tag $env:RELEASE_TAG already exists. Existing tags are never overwritten."
+          }
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
+        with:
+          vs-version: '[18.0,19.0)'
+          msbuild-architecture: x64
+
+      - name: Build Release x64
+        run: |
+          msbuild 'diablo 4.vcxproj' /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 `
+            "/p:OutDir=$env:GITHUB_WORKSPACE/out/release/" "/p:IntDir=$env:RUNNER_TEMP/d4rt-obj/"
+          if ($LASTEXITCODE -ne 0) { throw 'MSBuild failed.' }
+
+      - name: Verify binary version and package
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          $exe = Get-Item -LiteralPath 'out/release/d4rt.exe' -ErrorAction Stop
+          if ($exe.VersionInfo.FileVersion -ne $env:RELEASE_VERSION -or
+              $exe.VersionInfo.ProductVersion -ne $env:RELEASE_VERSION) {
+            throw "The executable version does not match $env:RELEASE_VERSION."
+          }
+          # Only the executable is needed: translations and the icon are embedded.
+          Compress-Archive -LiteralPath $exe.FullName -DestinationPath "out/$env:RELEASE_ARCHIVE" `
+            -CompressionLevel Optimal
+
+      - name: Publish release with the archive attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.version.outputs.title }}
+          RELEASE_ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          # Keep it private until the upload succeeds, so the updater never sees an empty release.
+          gh release create "$env:RELEASE_TAG" "out/$env:RELEASE_ARCHIVE" --draft `
+            --target "$env:GITHUB_SHA" --title "$env:RELEASE_TITLE" `
+            --notes-file out/release-notes.md --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation or archive upload failed; no release was published.' }
+          gh release edit "$env:RELEASE_TAG" --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish the draft release.' }
+          "Published [$env:RELEASE_TAG]($env:GITHUB_SERVER_URL/$env:GH_REPO/releases/tag/$env:RELEASE_TAG) with **$env:RELEASE_ARCHIVE**." >> $env:GITHUB_STEP_SUMMARY

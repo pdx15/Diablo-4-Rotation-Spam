@@ -39,6 +39,7 @@ struct LocStrings {
 	std::string radioRmb = "Hold RMB";
 	std::string radioAlways = "Always";
 	std::string chkGlobalHealth = "Global Auto-Heal by HP pixel";
+	std::string chkGlobalHealthIndependent = "Independent operation";
 	std::string lblHealthKey = "Heal Key: ";
 	std::string lblHealTimer = "Heal Timer (ms)";
 	std::string btnPickCoords = "Pick HP Point with Click";
@@ -105,6 +106,7 @@ struct ProfileConfig {
 	std::string name = "Default";
 	int combatMouseTrigger = 1;
 	bool globalHealthCheckEnable = true;
+	bool globalHealthIndependent = false;
 	int healthVKey = 'Q';
 	std::string healthKeyName = "Q";
 	int healthDelayMs = 50;

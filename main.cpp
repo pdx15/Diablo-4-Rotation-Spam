@@ -29,6 +29,7 @@ extern std::recursive_mutex settingsMutex;
 extern std::vector<SpamKey> spamKeys;
 extern int combatMouseTrigger;
 extern bool globalHealthCheckEnable;
+extern bool globalHealthIndependent;
 extern int healthVKey;
 extern std::string healthKeyName;
 extern int healthDelayMs;
@@ -430,6 +431,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				if (ImGui::IsItemDeactivatedAfterEdit()) SaveConfig();
 
 				if (globalHealthCheckEnable) {
+					if (ImGui::Checkbox(lang.chkGlobalHealthIndependent.c_str(),
+						&globalHealthIndependent)) {
+						SaveConfig();
+					}
 					if (ImGui::Button(
 						(lang.lblHealthKey + "[" + healthKeyName + "]").c_str())) {
 						isCapturing = true;
