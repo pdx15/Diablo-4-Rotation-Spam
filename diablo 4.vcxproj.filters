@@ -15,6 +15,12 @@
 		</Filter>
 	</ItemGroup>
 	<ItemGroup>
+		<ClCompile Include="event_schedule.cpp">
+			<Filter>Исходные файлы</Filter>
+		</ClCompile>
+		<ClCompile Include="event_service.cpp">
+			<Filter>Исходные файлы</Filter>
+		</ClCompile>
 		<ClCompile Include="main.cpp">
 			<Filter>Исходные файлы</Filter>
 		</ClCompile>
@@ -44,6 +50,15 @@
 		</ClCompile>
 	</ItemGroup>
 	<ItemGroup>
+		<ClInclude Include="event_schedule.h">
+			<Filter>Файлы заголовков</Filter>
+		</ClInclude>
+		<ClInclude Include="event_service.h">
+			<Filter>Файлы заголовков</Filter>
+		</ClInclude>
+		<ClInclude Include="third_party\picojson\picojson.h">
+			<Filter>Файлы заголовков</Filter>
+		</ClInclude>
 		<ClInclude Include="app_state.h">
 			<Filter>Файлы заголовков</Filter>
 		</ClInclude>

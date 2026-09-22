@@ -4,6 +4,33 @@
 #include <string>
 #include <vector>
 
+enum KeyCaptureTarget {
+	CaptureNone = -1,
+	CaptureToggle = 0,
+	CaptureSettings = 1,
+	CaptureHealth = 2,
+	CaptureLootHold = 3,
+	CaptureLootClick = 4,
+	CaptureEvents = 5,
+	CaptureSpamBase = 6
+};
+
+// Remapping or capturing a held key must not also activate its action.
+struct HotkeyEdge {
+	int key = 0;
+	bool wasDown = false;
+	bool Update(int currentKey, bool down, bool blocked) {
+		if (key != currentKey) {
+			key = currentKey;
+			wasDown = down;
+			return false;
+		}
+		bool pressed = down && !wasDown && !blocked;
+		wasDown = down;
+		return pressed;
+	}
+};
+
 struct SpamKey {
 	int vKey = '1';
 	std::string keyName = "1";
@@ -19,6 +46,26 @@ struct LocStrings {
 	std::string scriptStatus = "Script Status: ";
 	std::string healthStatus = "Health Status: ";
 	std::string options = "Options: ";
+	std::string events = "Events:";
+	std::string btnEvents = "Open Events:";
+	std::string eventsWindowTitle = "Events";
+	std::string eventWorldBoss = "World Boss";
+	std::string eventLegion = "Legion";
+	std::string eventHelltide = "Helltide";
+	std::string eventsStartsIn = "Starts in";
+	std::string eventsEndsIn = "Ends in";
+	std::string eventsBreak = "Break";
+	std::string eventsNoData = "No data";
+	std::string eventsLoading = "Updating...";
+	std::string eventsSynced = "Synced";
+	std::string eventsCached = "Cached (offline)";
+	std::string eventsEstimated = "Estimated from cache";
+	std::string eventsExpired = "Cache expired";
+	std::string eventsUnavailable = "No connection or valid schedule";
+	std::string eventsCacheWriteFailed = "Could not save cache";
+	std::string eventsHours = "h";
+	std::string eventsMinutes = "min";
+	std::string captureHotkeyConflict = "Key is already used by another action. Choose another key.";
 	std::string healthy = "Healthy";
 	std::string lowHp = "Low HP";
 	std::string captureCoordsTitle = "HEALTH PIXEL SELECTION MODE:";
@@ -39,6 +86,7 @@ struct LocStrings {
 	std::string radioRmb = "Hold RMB";
 	std::string radioAlways = "Always";
 	std::string chkGlobalHealth = "Global Auto-Heal by HP pixel";
+	std::string chkGlobalHealthIndependent = "Independent operation";
 	std::string lblHealthKey = "Heal Key: ";
 	std::string lblHealTimer = "Heal Timer (ms)";
 	std::string btnPickCoords = "Pick HP Point with Click";
@@ -105,6 +153,7 @@ struct ProfileConfig {
 	std::string name = "Default";
 	int combatMouseTrigger = 1;
 	bool globalHealthCheckEnable = true;
+	bool globalHealthIndependent = false;
 	int healthVKey = 'Q';
 	std::string healthKeyName = "Q";
 	int healthDelayMs = 50;
