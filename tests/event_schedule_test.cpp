@@ -66,7 +66,24 @@ void TestParsing() {
 	assert(staleTimers.helltide.phase == Phase::EndsIn && staleTimers.helltide.estimated);
 	assert(!ParseSchedule(Payload(), base + 8 * 86400)); // beyond the 7-day window
 	assert(!ParseSchedule(Payload(), 0));
+
+	std::string detail;
+	assert(!ParseSchedule("", base, &detail) && detail == "empty response body");
+	assert(!ParseSchedule(std::string(kMaxPayloadBytes + 1, ' '), base, &detail) &&
+		detail == "response too large (131073 bytes)");
+	assert(!ParseSchedule("<html>Unavailable</html>", base, &detail) &&
+		detail == "invalid JSON (24 bytes)");
+	assert(!ParseSchedule("{}", base, &detail) &&
+		detail == "schedule key 'world_boss': missing or not an array");
+	assert(!ParseSchedule("{\"world_boss\":[]}", base, &detail) &&
+		detail == "schedule key 'world_boss': empty list");
+	assert(!ParseSchedule(Payload("null"), base, &detail) &&
+		detail == "schedule key 'world_boss': no timestamps within range (1 entry)");
+	assert(!ParseSchedule(Payload(), 0, &detail) && detail == "fetch time out of range");
+	detail = "untouched";
+	assert(ParseSchedule(Payload(), base, &detail) && detail == "untouched");
 	std::cout << "PASS: structured JSON, sorting/deduplication, invalid/stale/bounded payloads\n";
+	std::cout << "PASS: parse-failure reasons for empty/oversized/invalid payloads and bad keys\n";
 }
 
 void TestCountdowns() {

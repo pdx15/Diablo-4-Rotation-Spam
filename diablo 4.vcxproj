@@ -149,6 +149,7 @@
     <ClCompile Include="imgui\imgui_impl_win32.cpp" />
     <ClCompile Include="imgui\imgui_tables.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
+    <ClCompile Include="event_log.cpp" />
     <ClCompile Include="event_schedule.cpp" />
     <ClCompile Include="event_service.cpp" />
     <ClCompile Include="macro.cpp" />
@@ -157,6 +158,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app_state.h" />
+    <ClInclude Include="event_log.h" />
     <ClInclude Include="event_schedule.h" />
     <ClInclude Include="event_service.h" />
     <ClInclude Include="third_party\picojson\picojson.h" />

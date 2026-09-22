@@ -3,6 +3,7 @@
 #endif
 
 #include <winhttp.h> // isolated Win32/HTTP test doubles
+#include "../event_log.h"
 #include "../event_service.h"
 
 #include <fstream>
@@ -27,6 +28,11 @@ events::View WaitForResult(events::Service& service) {
 	return {};
 }
 
+std::string ReadLog(const std::filesystem::path& logPath) {
+	std::ifstream input(logPath, std::ios::binary);
+	return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
 void CheckOfflineFallback(const std::filesystem::path& path) {
 	auto before = events::LoadCache(path);
 	assert(before);
@@ -49,6 +55,7 @@ int main() {
 	std::filesystem::create_directories(root);
 	fake_win32::appData = root.string();
 	const auto path = root / "d4rt" / "events_cache.json";
+	const auto logPath = root / "d4rt" / "event_log.txt";
 	fake_winhttp::Reset(Payload());
 	fake_winhttp::blockResponse = true;
 	{
@@ -94,6 +101,19 @@ int main() {
 	CheckOfflineFallback(path);
 	std::cout << "PASS: cached restart on network, HTTP 429, read, malformed JSON and oversized-response failures\n";
 
+	const std::string log = ReadLog(logPath);
+	assert(log.find("worker started (d4rt ") != std::string::npos);
+	assert(log.find("cache loaded: boss=") != std::string::npos);
+	assert(log.find("HTTP 200") != std::string::npos && log.find("state=online") != std::string::npos);
+	assert(log.find("WinHttpSendRequest failed (win32=12029)") != std::string::npos);
+	assert(log.find("HTTP status 429") != std::string::npos);
+	assert(log.find("response read failed after 0 bytes (win32=12030)") != std::string::npos);
+	assert(log.find("parse failed (invalid JSON (24 bytes))") != std::string::npos);
+	assert(log.find("response exceeded 131072-byte cap") != std::string::npos);
+	assert(log.find("state=offline") != std::string::npos);
+	assert(log.find("worker stopped") != std::string::npos);
+	std::cout << "PASS: event log records startup, cache, fetch/parse failures and states\n";
+
 	std::filesystem::remove(path);
 	fake_winhttp::Reset(""); fake_winhttp::networkFailure = true;
 	{
@@ -118,5 +138,20 @@ int main() {
 	}
 	assert(fake_winhttp::handles == 0);
 	std::cout << "PASS: unwritable cache does not discard valid in-memory schedule\n";
+
+	{
+		const auto rotationPath = root / "rotation" / "event_log.txt";
+		const std::string filler(400, 'x');
+		for (int i = 0; i < 3000; ++i)
+			events::LogEvent(rotationPath, "line " + std::to_string(i) + " " + filler);
+		std::error_code error;
+		const auto size = std::filesystem::file_size(rotationPath, error);
+		assert(!error && size <= events::kMaxLogBytes + 512);
+		const std::string rotated = ReadLog(rotationPath);
+		assert(!rotated.empty() && rotated.front() == '[');
+		assert(rotated.find("line 2999") != std::string::npos);
+		assert(rotated.find("line 0 ") == std::string::npos);
+		std::cout << "PASS: event log rotation caps the file and keeps the newest lines\n";
+	}
 	std::filesystem::remove_all(root);
 }
