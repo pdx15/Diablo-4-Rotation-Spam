@@ -956,18 +956,6 @@ void LoadLanguage() {
 			lang.eventsBreak = val;
 		else if (key == "eventsNoData")
 			lang.eventsNoData = val;
-		else if (key == "eventsLoading")
-			lang.eventsLoading = val;
-		else if (key == "eventsSynced")
-			lang.eventsSynced = val;
-		else if (key == "eventsCached")
-			lang.eventsCached = val;
-		else if (key == "eventsEstimated")
-			lang.eventsEstimated = val;
-		else if (key == "eventsExpired")
-			lang.eventsExpired = val;
-		else if (key == "eventsUnavailable")
-			lang.eventsUnavailable = val;
 		else if (key == "eventsCacheWriteFailed")
 			lang.eventsCacheWriteFailed = val;
 		else if (key == "eventsHours")

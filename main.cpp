@@ -55,19 +55,19 @@ extern int activeProfileIndex;
 extern bool autoUpdateEnabled;
 
 namespace {
-	constexpr int kOverlayWidth = 1280;
-	constexpr int kOverlayHeight = 760;
-	constexpr float kStatusWindowWidth = 340.0f;
-	constexpr float kStatusWindowHeight = 114.0f;
-	constexpr float kSettingsWindowInitialX = kStatusWindowWidth + 15.0f;
+	// HUD panels are free-floating now: their default size below only applies
+	// on first use, afterwards the user's drag/resize layout is remembered.
+	constexpr float kStatusWindowDefaultWidth = 340.0f;
+	constexpr float kStatusWindowDefaultHeight = 114.0f;
+	constexpr float kEventsWindowDefaultHeight = 105.0f;
+	constexpr float kHudWindowMinWidth = 160.0f;
+	constexpr float kHudWindowMinHeight = 50.0f;
+	constexpr float kSettingsWindowInitialX = kStatusWindowDefaultWidth + 15.0f;
 	constexpr float kSettingsWindowInitialY = 0.0f;
 	constexpr float kSettingsWindowDefaultWidth = 560.0f;
 	constexpr float kSettingsWindowDefaultHeight = 520.0f;
 	constexpr float kSettingsWindowMaxWidth = 900.0f;
 	constexpr float kSettingsWindowMaxHeight = 720.0f;
-
-	static_assert(kOverlayWidth >
-		kSettingsWindowInitialX + kSettingsWindowMaxWidth);
 
 	char profileNameBuffer[64] = "";
 	int lastProfileIndex = -1;
@@ -75,6 +75,7 @@ namespace {
 	UpdatePhase lastUpdatePhase = UpdatePhase::Idle;
 }  // namespace
 
+extern std::string GetConfigPath();
 extern void LoadConfig();
 extern void SaveConfig();
 extern void SelectProfile(int profileIndex);
@@ -91,14 +92,28 @@ IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
 namespace {
-	void DrawEventsWindow(const events::View& view) {
-		ImGui::SetNextWindowPos(ImVec2(0, kStatusWindowHeight + 6.0f), ImGuiCond_Always);
-		ImGui::SetNextWindowSize(ImVec2(kStatusWindowWidth, 0), ImGuiCond_Always);
-		if (ImGui::Begin("EventsPanel", nullptr,
-			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
-			ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
-			ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs)) {
+	// The HUD stays click-through while gaming; panels only become interactive
+	// while the options window or a capture mode is active (inputActive).
+	ImGuiWindowFlags HudWindowFlags(bool inputActive) {
+		ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoFocusOnAppearing;
+		if (!inputActive) flags |= ImGuiWindowFlags_NoInputs;
+		return flags;
+	}
+
+	void DrawEventsWindow(const events::View& view, bool inputActive,
+		const ImVec2& statusPos, const ImVec2& statusSize,
+		const ImVec2& overlayMax) {
+		ImGui::SetNextWindowPos(
+			ImVec2(statusPos.x, statusPos.y + statusSize.y + 6.0f),
+			ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(
+			ImVec2(statusSize.x, kEventsWindowDefaultHeight),
+			ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(
+			ImVec2(kHudWindowMinWidth, kHudWindowMinHeight), overlayMax);
+		if (ImGui::Begin("EventsPanel", nullptr, HudWindowFlags(inputActive))) {
 			ImGui::TextUnformatted(lang.eventsWindowTitle.c_str());
 			ImGui::Separator();
 			if (ImGui::BeginTable("##eventTimers", 2, ImGuiTableFlags_SizingFixedFit)) {
@@ -125,17 +140,6 @@ namespace {
 				row(lang.eventHelltide, view.timers.helltide);
 				ImGui::EndTable();
 			}
-			ImGui::Separator();
-			const std::string* status = &lang.eventsSynced;
-			if (view.timers.expired) status = &lang.eventsExpired;
-			else if (view.sync == events::SyncState::Loading) status = &lang.eventsLoading;
-			else if (view.timers.worldBoss.phase == events::Phase::Unknown)
-				status = &lang.eventsUnavailable;
-			else if (view.timers.Estimated()) status = &lang.eventsEstimated;
-			else if (view.sync == events::SyncState::Offline) status = &lang.eventsCached;
-			ImGui::PushTextWrapPos(0.0f);
-			ImGui::TextDisabled("Helltides.com | %s", status->c_str());
-			ImGui::PopTextWrapPos();
 			if (view.cacheWriteFailed) ImGui::TextWrapped("%s", lang.eventsCacheWriteFailed.c_str());
 		}
 		ImGui::End();
@@ -168,13 +172,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	std::thread(GlobalHotkeyMonitor).detach();
 
 	WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc,         0L,
-					  0L,         hInstance,  nullptr,         nullptr,
-					  nullptr,    nullptr,    L"OverlayClass", nullptr };
+					    0L,         hInstance,  nullptr,         nullptr,
+					    nullptr,    nullptr,    L"OverlayClass", nullptr };
 	RegisterClassExW(&wc);
 
+	// Cover the whole virtual screen so the HUD panels can be moved and
+	// stretched anywhere on any monitor; the color key keeps everything but
+	// the panels invisible and click-through.
+	RECT overlayRect{};
+	overlayRect.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+	overlayRect.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+	overlayRect.right = overlayRect.left + GetSystemMetrics(SM_CXVIRTUALSCREEN);
+	overlayRect.bottom = overlayRect.top + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+	if (overlayRect.right <= overlayRect.left ||
+		overlayRect.bottom <= overlayRect.top) {
+		overlayRect.left = 0;
+		overlayRect.top = 0;
+		overlayRect.right = GetSystemMetrics(SM_CXSCREEN);
+		overlayRect.bottom = GetSystemMetrics(SM_CYSCREEN);
+	}
+
 	HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
-		L"OverlayClass", L"Overlay", WS_POPUP, 50, 50,
-		kOverlayWidth, kOverlayHeight, nullptr, nullptr,
+		L"OverlayClass", L"Overlay", WS_POPUP, overlayRect.left, overlayRect.top,
+		overlayRect.right - overlayRect.left,
+		overlayRect.bottom - overlayRect.top, nullptr, nullptr,
 		hInstance, nullptr);
 	SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 
@@ -195,6 +216,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	style.WindowRounding = 0.0f;
 
 	ImGuiIO& io = ImGui::GetIO();
+
+	// Remember the panel layout next to config.txt so it survives restarts
+	// and does not depend on the directory the exe was launched from.
+	std::string iniPath =
+		std::filesystem::path(GetConfigPath()).parent_path().string() +
+		"\\imgui.ini";
+	{
+		std::error_code ec;
+		std::filesystem::path iniFile(iniPath);
+		if (!std::filesystem::exists(iniFile, ec)) {
+			// One-time migration of the legacy ./imgui.ini next to the exe.
+			std::error_code legacyEc;
+			std::filesystem::path legacy =
+				std::filesystem::current_path(legacyEc) / "imgui.ini";
+			if (!legacyEc && std::filesystem::exists(legacy, legacyEc) && !legacyEc)
+				std::filesystem::copy_file(legacy, iniFile, legacyEc);
+		}
+	}
+	io.IniFilename = iniPath.c_str();
+
 	char winFolder[MAX_PATH];
 	GetWindowsDirectoryA(winFolder, MAX_PATH);
 	std::string fontPath = std::string(winFolder) + "\\Fonts\\Arial.ttf";
@@ -206,6 +247,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	events::Service eventService;
 	bool settingsLayoutAdjusted = false;
+	ImVec2 statusWindowPos(0.0f, 0.0f);
+	ImVec2 statusWindowSize(kStatusWindowDefaultWidth, kStatusWindowDefaultHeight);
 	bool done = false;
 	while (!done) {
 		MSG msg;
@@ -237,14 +280,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 
+		ImVec2 overlayMax = ImGui::GetIO().DisplaySize;
+		if (overlayMax.x < kHudWindowMinWidth) overlayMax.x = kHudWindowMinWidth;
+		if (overlayMax.y < kHudWindowMinHeight) overlayMax.y = kHudWindowMinHeight;
+
 		{
 			std::lock_guard<std::recursive_mutex> lock(settingsMutex);
 
-			ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-			ImGui::SetNextWindowSize(ImVec2(kStatusWindowWidth, kStatusWindowHeight), ImGuiCond_Always);
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSize(
+				ImVec2(kStatusWindowDefaultWidth, kStatusWindowDefaultHeight),
+				ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSizeConstraints(
+				ImVec2(kHudWindowMinWidth, kHudWindowMinHeight), overlayMax);
 			ImGui::Begin("StatusPanel", nullptr,
-				ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+				HudWindowFlags(overlayNeedsInput));
+			statusWindowPos = ImGui::GetWindowPos();
+			statusWindowSize = ImGui::GetWindowSize();
 
 			ImGui::Text(lang.gameStatus.c_str());
 			ImGui::SameLine();
@@ -290,7 +342,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 			if (showEventsWindow) {
 				eventService.Start();
-				DrawEventsWindow(eventService.GetView());
+				DrawEventsWindow(eventService.GetView(), overlayNeedsInput,
+					statusWindowPos, statusWindowSize, overlayMax);
 			}
 
 			if (isCapturingCoordinates) {

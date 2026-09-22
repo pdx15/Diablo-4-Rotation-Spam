@@ -1,4 +1,4 @@
-﻿# Diablo 4 Overlay Rotation Spam
+# Diablo 4 Overlay Rotation Spam
 
 [English](#english) | [Русский](#русский)
 
@@ -17,7 +17,7 @@ A lightweight, high-performance overlay and macro automation tool for Diablo 4, 
 * **Global Pixel Auto-Heal:** Scans the selected health point and heals when HP is low. By default it follows the combat spam activation condition; enable **Independent operation** to heal without holding a combat mouse button.
 * **Interactive Position Picker:** Click a single button in settings, then left-click anywhere on your screen to set the exact health pixel coordinates.
 * **Dynamic Combat Spam:** Add any number of skills with custom independent millisecond timers.
-* **Persistent Settings:** Automatically saves your hotkeys, profiles, timers, and pixel configurations to `%APPDATA%\d4rt\config.txt`.
+* **Persistent Settings:** Automatically saves your hotkeys, profiles, timers, and pixel configurations to `%APPDATA%\d4rt\config.txt`; the panel layout is stored in `%APPDATA%\d4rt\imgui.ini`.
 
 ### Independent auto-heal
 In settings, enable **Global Auto-Heal by HP pixel**, then check **Independent operation**. Auto-heal will ignore **Always / Hold LMB / Hold RMB** while combat spam continues to follow the selected condition. Healing still requires the script to be ON, Diablo IV to be the foreground window, and low HP to be detected; the heal timer is unchanged.
@@ -40,14 +40,16 @@ or the reserved exit key F9 is rejected with a localized hint.
 * Only hours and minutes are shown, rounded up; calculations use Unix seconds,
   with no local-time conversion. Events work even while combat automation is OFF.
 * After the first opening, a background worker requests
-  `https://helltides.com/api/schedule` immediately and every five minutes, including
-  while the panel is hidden. UI rendering and combat automation never wait for HTTP.
+  `https://helltides.com/api/schedule` immediately, then every five minutes
+  (a minute after a failed attempt), including while the panel is hidden.
+  UI rendering and combat automation never wait for HTTP.
 * Valid schedules are atomically cached at `%APPDATA%\d4rt\events_cache.json`
   and restored on the next launch/opening. Network errors or invalid responses
-  never overwrite the last good cache. Cached data and predictions are labeled;
-  after the supplied list ends, predictions use the last known phase and the
-  210/25/60-minute cycles. Cache older than seven days is shown as expired, not live.
-  With neither valid cache nor network data, the panel displays **No data**.
+  never overwrite the last good cache. When the published list has run out —
+  for example late at night, before the next daily list appears — countdowns
+  continue as predictions using the 210/25/60-minute cycles. Cache older than
+  seven days is shown as expired, not live. With neither valid cache nor
+  network data, the panel displays **No data**.
 * English/Russian labels include loading, offline, expired-cache and write-error
   states. `Helltides.com` is a third-party source; timings may change after patches.
 
@@ -74,6 +76,7 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
 
 ### Возможности
 * **Минималистичный HUD статуса:** Компактное прозрачное окно отображает статусы игры, скрипта, здоровья, активный профиль и клавиши Опций/Эвентов поверх игры.
+* **Настраиваемый интерфейс:** При открытом меню настроек панели HUD и эвентов можно перетащить в любое место на любом мониторе и свободно растянуть; расположение запоминается между запусками.
 * **Умный сквозной клик (Click-Through):** Оверлей полностью пропускает клики мыши во время игры. Нажатие клавиши Опций мгновенно включает курсор для настройки.
 * **Глобальный автохил по пикселю:** Сканирует выбранную точку на сфере здоровья и прожимает хил при низком ХП. По умолчанию следует условию активации боевого спама; галочка **Независимая работа** позволяет хилиться без удержания боевой кнопки мыши.
 * **Интерактивный выбор координат:** Нажмите одну кнопку в меню, кликните левой кнопкой мыши в любой точке экрана игры, и точные координаты ХП запишутся автоматически.

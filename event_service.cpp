@@ -29,7 +29,10 @@ namespace {
 	}
 
 	std::optional<std::string> FetchSchedule(std::stop_token stop) {
-		HttpHandle session(WinHttpOpen(L"d4rt/" APP_VERSION_STR_W,
+		// A browser-like agent string: some CDN/WAF setups reject unknown
+		// clients before any JSON is served, while the site works in browsers.
+		HttpHandle session(WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+			L"d4rt/" APP_VERSION_STR_W,
 			WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
 			WINHTTP_NO_PROXY_BYPASS, 0));
 		if (!session || !WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 5000))
@@ -116,17 +119,20 @@ void Service::Run(std::stop_token stop) {
 			// Retain the last validated schedule on network, parse or disk failures.
 		}
 		if (stop.stop_requested()) break;
+		bool refreshed = false;
 		{
 			std::lock_guard lock(stateMutex_);
 			if (fresh) {
 				schedule_ = std::move(*fresh);
 				sync_ = SyncState::Online;
 				cacheWriteFailed_ = !saved;
+				refreshed = true;
 			}
 			else sync_ = SyncState::Offline;
 		}
 		std::unique_lock wait(waitMutex_);
-		wake_.wait_for(wait, stop, std::chrono::seconds(kRefreshSeconds), [] { return false; });
+		wake_.wait_for(wait, stop, std::chrono::seconds(
+			refreshed ? kRefreshSeconds : kRetrySeconds), [] { return false; });
 	}
 }
 }  // namespace events

@@ -91,9 +91,10 @@ namespace {
 		if (!ReadStarts(root, "world_boss", fetchedAt, result.worldBoss) ||
 			!ReadStarts(root, "legion", fetchedAt, result.legion) ||
 			!ReadStarts(root, "helltide", fetchedAt, result.helltide)) return std::nullopt;
-		// A stale HTTP response must not renew the cache's age.
-		if (result.worldBoss.back() < fetchedAt || result.legion.back() < fetchedAt ||
-			result.helltide.back() + kHelltidePeriod <= fetchedAt) return std::nullopt;
+		// helltides.com publishes a daily list, so every listed event may
+		// already be in the past by the time it is fetched. That must still
+		// count as valid data: the cycle predictions below keep the timers
+		// running until the next publication instead of showing "No data".
 		return result;
 	}
 

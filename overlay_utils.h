@@ -157,6 +157,16 @@ inline LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam,
 		}
 		return 0;
 
+	case WM_DISPLAYCHANGE:
+		// Keep covering the whole virtual screen when monitors change so the
+		// panels can still be placed anywhere.
+		SetWindowPos(hWnd, HWND_TOPMOST, GetSystemMetrics(SM_XVIRTUALSCREEN),
+			GetSystemMetrics(SM_YVIRTUALSCREEN),
+			GetSystemMetrics(SM_CXVIRTUALSCREEN),
+			GetSystemMetrics(SM_CYVIRTUALSCREEN),
+			SWP_NOACTIVATE | SWP_SHOWWINDOW);
+		return 0;
+
 	case WM_SYSCOMMAND:
 		if ((wParam & 0xFFF0) == SC_KEYMENU) return 0;
 		break;

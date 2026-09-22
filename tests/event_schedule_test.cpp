@@ -57,7 +57,14 @@ void TestParsing() {
 	assert(ParseSchedule(Payload() + " \n\t", base));
 	assert(!ParseSchedule(std::string(kMaxPayloadBytes + 1, ' '), base));
 	assert(!ParseSchedule(std::string(40, '[') + "0" + std::string(40, ']'), base));
-	assert(!ParseSchedule(Payload(), base + 86400)); // entirely stale response
+	assert(ParseSchedule(Payload(), base + 86400 - 1)); // in-range list stays valid
+	auto stale = ParseSchedule(Payload(), base + 86400);
+	assert(stale);  // a daily list fully in the past still feeds predictions
+	auto staleTimers = CalculateTimers(*stale, base + 86400);
+	assert(staleTimers.worldBoss.phase == Phase::StartsIn && staleTimers.worldBoss.estimated);
+	assert(staleTimers.legion.phase == Phase::StartsIn && staleTimers.legion.estimated);
+	assert(staleTimers.helltide.phase == Phase::EndsIn && staleTimers.helltide.estimated);
+	assert(!ParseSchedule(Payload(), base + 8 * 86400)); // beyond the 7-day window
 	assert(!ParseSchedule(Payload(), 0));
 	std::cout << "PASS: structured JSON, sorting/deduplication, invalid/stale/bounded payloads\n";
 }
