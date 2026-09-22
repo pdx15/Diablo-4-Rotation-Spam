@@ -69,7 +69,7 @@ def main() -> None:
     parser.add_argument("version", help="Release version, e.g. 1.0.5.2")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    header_path = root / "version.h"
+    header_path = root / "src" / "version.h"
     try:
         metadata = release_metadata(args.version)
         header = stamp_version_header(header_path.read_text(encoding="utf-8"), metadata["version"])

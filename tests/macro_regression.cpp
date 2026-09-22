@@ -6,7 +6,7 @@
 #include <cassert>
 #include <filesystem>
 #include <iostream>
-#include "../macro.cpp"
+#include "../src/macro.cpp"
 
 namespace {
 int keyDowns(int key) {
@@ -276,8 +276,8 @@ void testEventsHotkey() {
 }
 
 void testLanguages() {
-	fake_win32::resources[IDR_LANG_EN] = readFile("lang_en.txt");
-	fake_win32::resources[IDR_LANG_RU] = readFile("lang_ru.txt");
+	fake_win32::resources[IDR_LANG_EN] = readFile("src/lang_en.txt");
+	fake_win32::resources[IDR_LANG_RU] = readFile("src/lang_ru.txt");
 	lang = LocStrings{};
 	assert(lang.chkGlobalHealthIndependent == "Independent operation");
 	fake_win32::language = LANG_RUSSIAN;

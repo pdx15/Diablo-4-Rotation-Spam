@@ -16,7 +16,7 @@ from scripts.prepare_release import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-HEADER = (ROOT / "version.h").read_text(encoding="utf-8")
+HEADER = (ROOT / "src" / "version.h").read_text(encoding="utf-8")
 
 
 class ReleaseVersionTests(unittest.TestCase):
@@ -93,7 +93,8 @@ class ReleaseVersionTests(unittest.TestCase):
             (root / "scripts").mkdir()
             script = root / "scripts" / "prepare_release.py"
             shutil.copyfile(ROOT / "scripts" / script.name, script)
-            header = root / "version.h"
+            header = root / "src" / "version.h"
+            header.parent.mkdir()
             header.write_text(HEADER, encoding="utf-8")
             output = root / "github-output.txt"
             output.write_text("previous=value\n", encoding="utf-8")

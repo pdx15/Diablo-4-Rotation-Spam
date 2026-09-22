@@ -55,8 +55,6 @@ struct LocStrings {
 	std::string eventsStartsIn = "Starts in";
 	std::string eventsEndsIn = "Ends in";
 	std::string eventsBreak = "Break";
-	std::string eventsNoData = "No data";
-	std::string eventsCacheWriteFailed = "Could not save cache";
 	std::string eventsHours = "h";
 	std::string eventsMinutes = "min";
 	std::string captureHotkeyConflict = "Key is already used by another action. Choose another key.";

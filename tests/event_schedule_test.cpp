@@ -2,135 +2,70 @@
 #error "Event schedule tests require assertions enabled"
 #endif
 
-#include "../event_schedule.h"
+#include "../src/event_schedule.h"
 
 #include <cassert>
-#include <fstream>
 #include <iostream>
 #include <limits>
 
 using namespace events;
 namespace {
-// 2026-09-22 00:00:00 UTC. Tests never depend on the machine's current date/timezone.
+// 2026-09-22 00:00:00 UTC: exactly on the hour and on the 25-minute legion
+// grid. Tests never depend on the machine's current date or timezone.
 constexpr UnixSeconds base = 1790035200;
 
-std::string Payload(const std::string& boss = "1790042400", const std::string& legion = "1790036700",
-	const std::string& helltide = "1790035200") {
-	return "{\"world_boss\":[{\"boss\":\"Azmodan\",\"timestamp\":" + boss +
-		",\"zone\":[{\"name\":\"Fractured Peaks\",\"timestamp\":1}]}],"
-		"\"legion\":[{\"timestamp\":" + legion + "}],"
-		"\"helltide\":[{\"timestamp\":" + helltide + "}]}";
+void TestConstants() {
+	// Pin the verified phase references: a silent edit must fail the suite.
+	assert(kWorldBossAnchor == 1789588800);  // 2026-09-16T20:00:00Z
+	assert(kLegionAnchor == 1789588200);  // 2026-09-16T19:50:00Z
+	assert(kWorldBossPeriod == 210 * 60 && kLegionPeriod == 25 * 60);
+	assert(kHelltidePeriod == 60 * 60 && kHelltideDuration == 55 * 60);
 }
 
-Schedule Example() {
-	auto schedule = ParseSchedule(Payload(), base);
-	assert(schedule);
-	return *schedule;
-}
-
-void TestParsing() {
-	auto schedule = Example();
-	assert(schedule.worldBoss == std::vector<UnixSeconds>{base + 7200});
-	assert(schedule.legion == std::vector<UnixSeconds>{base + 1500});
-	assert(schedule.helltide == std::vector<UnixSeconds>{base});
-
-	auto unordered = ParseSchedule(R"({
-		"meta":{"timestamp":1},
-		"world_boss":[{"timestamp":1790055000},{"timestamp":1790042400},{"timestamp":1790042400}],
-		"legion":[{"timestamp":null},{"timestamp":1790036700}],
-		"helltide":[{"timestamp":1790035200},{"startTime":"ignored","timestamp":1790038800}]
-	})", base);
-	assert(unordered && unordered->worldBoss.size() == 2);
-	assert(unordered->worldBoss.front() == base + 7200);
-	assert(unordered->legion.size() == 1);
-	assert(unordered->helltide.size() == 2);
-
-	for (const auto& invalid : {"null", "true", "-1", "1790042400000", "1790042400.5",
-		"\"1790042400\"", "1e400", "{}", "[]"}) {
-		assert(!ParseSchedule(Payload(invalid), base));
-	}
-	assert(!ParseSchedule("<html>Unavailable</html>", base));
-	assert(!ParseSchedule("[]", base));
-	assert(!ParseSchedule("{}", base));
-	assert(!ParseSchedule("{\"world_boss\":[]}", base));
-	assert(!ParseSchedule(Payload() + "false", base));
-	assert(ParseSchedule(Payload() + " \n\t", base));
-	assert(!ParseSchedule(std::string(kMaxPayloadBytes + 1, ' '), base));
-	assert(!ParseSchedule(std::string(40, '[') + "0" + std::string(40, ']'), base));
-	assert(ParseSchedule(Payload(), base + 86400 - 1)); // in-range list stays valid
-	auto stale = ParseSchedule(Payload(), base + 86400);
-	assert(stale);  // a daily list fully in the past still feeds predictions
-	auto staleTimers = CalculateTimers(*stale, base + 86400);
-	assert(staleTimers.worldBoss.phase == Phase::StartsIn && staleTimers.worldBoss.estimated);
-	assert(staleTimers.legion.phase == Phase::StartsIn && staleTimers.legion.estimated);
-	assert(staleTimers.helltide.phase == Phase::EndsIn && staleTimers.helltide.estimated);
-	assert(!ParseSchedule(Payload(), base + 8 * 86400)); // beyond the 7-day window
-	assert(!ParseSchedule(Payload(), 0));
-
-	std::string detail;
-	assert(!ParseSchedule("", base, &detail) && detail == "empty response body");
-	assert(!ParseSchedule(std::string(kMaxPayloadBytes + 1, ' '), base, &detail) &&
-		detail == "response too large (131073 bytes)");
-	assert(!ParseSchedule("<html>Unavailable</html>", base, &detail) &&
-		detail == "invalid JSON (24 bytes)");
-	assert(!ParseSchedule("{}", base, &detail) &&
-		detail == "schedule key 'world_boss': missing or not an array");
-	assert(!ParseSchedule("{\"world_boss\":[]}", base, &detail) &&
-		detail == "schedule key 'world_boss': empty list");
-	assert(!ParseSchedule(Payload("null"), base, &detail) &&
-		detail == "schedule key 'world_boss': no timestamps within range (1 entry)");
-	assert(!ParseSchedule(Payload(), 0, &detail) && detail == "fetch time out of range");
-	detail = "untouched";
-	assert(ParseSchedule(Payload(), base, &detail) && detail == "untouched");
-	std::cout << "PASS: structured JSON, sorting/deduplication, invalid/stale/bounded payloads\n";
-	std::cout << "PASS: parse-failure reasons for empty/oversized/invalid payloads and bad keys\n";
+void TestGrids() {
+	// The 210-minute boss grid from the 2026-09-16 20:00Z anchor reproduces
+	// the published 2026-09-22/23 spawns: 02:00, 05:30, 09:00, 12:30, 16:00,
+	// 19:30, 23:00Z and 02:30Z the next day.
+	for (UnixSeconds offset : {7200, 19800, 32400, 45000, 57600, 70200, 82800, 95400})
+		assert(CalculateTimers(base + offset).worldBoss.seconds == 0);
+	// The 25-minute legion grid from the 19:50Z anchor lands on the hour at
+	// base. 25 minutes does not divide 24 hours, so the grid slips relative to
+	// the midnight: the day after base the spawns run 00:10, 00:35, 01:00Z...
+	assert(CalculateTimers(base).legion.seconds == 0);
+	assert(CalculateTimers(base + 86400).legion.seconds == 600);
+	// A second before a spawn the raw countdown is one second.
+	assert(CalculateTimers(base + 7200 - 1).worldBoss.seconds == 1);
 }
 
 void TestCountdowns() {
-	auto schedule = Example();
-	auto view = CalculateTimers(schedule, base + 300);
-	assert(view.worldBoss.phase == Phase::StartsIn && view.worldBoss.seconds == 6900);
-	assert(view.legion.phase == Phase::StartsIn && view.legion.seconds == 1200);
-	assert(view.helltide.phase == Phase::EndsIn && view.helltide.seconds == 3000);
-	assert(!view.Estimated() && !view.expired);
-	assert(CalculateTimers(schedule, base + 1500).legion.seconds == 0);
-	assert(CalculateTimers(schedule, base + 1501).legion.seconds == 1499);
-	assert(CalculateTimers(schedule, base + 1501).legion.estimated);
-	assert(CalculateTimers(schedule, base + 7200).worldBoss.seconds == 0);
-	assert(CalculateTimers(schedule, base + 7201).worldBoss.seconds == kWorldBossPeriod - 1);
-	assert(CalculateTimers(schedule, base + 7201).worldBoss.estimated);
-	assert(CalculateTimers(schedule, base + 86400).legion.seconds == 600);
-	assert(CalculateTimers(schedule, base + 86400).worldBoss.seconds == 9000);
+	auto timers = CalculateTimers(base + 300);
+	assert(timers.worldBoss.phase == Phase::StartsIn && timers.worldBoss.seconds == 6900);
+	assert(timers.legion.phase == Phase::StartsIn && timers.legion.seconds == 1200);
+	assert(timers.helltide.phase == Phase::EndsIn && timers.helltide.seconds == 3000);
 
-	// A refreshed schedule wins over a previous projection, even if its phase changes.
-	auto refreshed = ParseSchedule(Payload("1790042460", "1790036760"), base + 600);
-	assert(refreshed);
-	assert(CalculateTimers(*refreshed, base + 600).worldBoss.seconds == 6660);
-	assert(CalculateTimers(*refreshed, base + 600).legion.seconds == 960);
-	std::cout << "PASS: boss/legion countdowns, exact starts, cached predictions, resynchronization\n";
+	// The grids continue unchanged across midnight (2026-09-22 23:59:59Z):
+	// boss at 02:30Z (+9001 s), legion at 00:10Z (+601 s), break to the hour.
+	auto late = CalculateTimers(base + 86399);
+	assert(late.worldBoss.phase == Phase::StartsIn && late.worldBoss.seconds == 9001);
+	assert(late.legion.phase == Phase::StartsIn && late.legion.seconds == 601);
+	assert(late.helltide.phase == Phase::Break && late.helltide.seconds == 1);
 }
 
 void TestHelltideBoundaries() {
-	auto schedule = Example();
 	for (UnixSeconds offset : {0, 1, 3299}) {
-		auto timer = CalculateTimers(schedule, base + offset).helltide;
+		auto timer = CalculateTimers(base + offset).helltide;
 		assert(timer.phase == Phase::EndsIn && timer.seconds == 3300 - offset);
 	}
 	for (UnixSeconds offset : {3300, 3301, 3599}) {
-		auto timer = CalculateTimers(schedule, base + offset).helltide;
+		auto timer = CalculateTimers(base + offset).helltide;
 		assert(timer.phase == Phase::Break && timer.seconds == 3600 - offset);
 	}
-	auto nextHour = CalculateTimers(schedule, base + 3600).helltide;
-	assert(nextHour.phase == Phase::EndsIn && nextHour.seconds == 3300 && nextHour.estimated);
-	schedule.helltide.push_back(base + 3600);
-	assert(!CalculateTimers(schedule, base + 3600).helltide.estimated);
-	schedule.helltide.erase(schedule.helltide.begin()); // API returned only the next hour
-	assert(CalculateTimers(schedule, base + 3299).helltide.seconds == 1);
-	assert(CalculateTimers(schedule, base + 3300).helltide.phase == Phase::Break);
-	std::cout << "PASS: Helltide start, 55-minute end, five-minute break and next-hour rollover\n";
+	// Rollover into the next hour starts a fresh 55-minute phase.
+	auto nextHour = CalculateTimers(base + 3600).helltide;
+	assert(nextHour.phase == Phase::EndsIn && nextHour.seconds == 3300);
 }
 
-void TestFormattingAndExpiry() {
+void TestFormatting() {
 	assert(FormatDuration(0, "h", "min") == "0 h 00 min");
 	assert(FormatDuration(-1, "h", "min") == "0 h 00 min");
 	assert(FormatDuration(1, "h", "min") == "0 h 01 min");
@@ -139,52 +74,17 @@ void TestFormattingAndExpiry() {
 	assert(FormatDuration(12600, "h", "min") == "3 h 30 min");
 	assert(FormatDuration(3599, "ч", "мин") == "1 ч 00 мин");
 	assert(!FormatDuration(std::numeric_limits<UnixSeconds>::max(), "h", "min").empty());
-	assert(CalculateTimers({}, base).worldBoss.phase == Phase::Unknown);
-	auto schedule = Example();
-	assert(!CalculateTimers(schedule, base + kMaxCacheAge).expired);
-	auto expired = CalculateTimers(schedule, base + kMaxCacheAge + 1);
-	assert(expired.expired && expired.worldBoss.phase == Phase::Unknown);
-	assert(expired.legion.phase == Phase::Unknown && expired.helltide.phase == Phase::Unknown);
-	assert(CalculateTimers(schedule, base - 301).expired); // bad future-dated cache / clock rollback
-	assert(CalculateTimers(schedule, std::numeric_limits<UnixSeconds>::min()).expired);
-	std::cout << "PASS: localized hour/minute formatting, rounding and cache expiry\n";
+	// The wall clock stays in the Unix-seconds domain.
+	assert(Now() > 1700000000);
 }
-
-void TestCache() {
-	auto root = std::filesystem::temp_directory_path() /
-		("d4rt-events-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-	auto path = root / "nested" / "events_cache.json";
-	assert(!LoadCache(path));
-	auto schedule = Example();
-	assert(SaveCache(path, schedule));
-	auto loaded = LoadCache(path);
-	assert(loaded && loaded->fetchedAt == base);
-	assert(loaded->worldBoss == schedule.worldBoss && loaded->legion == schedule.legion);
-	assert(loaded->helltide == schedule.helltide);
-	assert(CalculateTimers(*loaded, base + 300).helltide.seconds == 3000);
-	schedule.worldBoss[0] += 60;
-	assert(SaveCache(path, schedule)); // replaces an existing file, not just first-save
-	assert(LoadCache(path)->worldBoss == schedule.worldBoss);
-	assert(!SaveCache(path, {})); // invalid data must not destroy the last good cache
-	assert(LoadCache(path)->worldBoss == schedule.worldBoss);
-	assert(!SaveCache({}, schedule));
-	assert(!SaveCache(path / "not-a-directory.json", schedule));
-	assert(LoadCache(path));
-
-	for (const auto& text : {std::string("{"), std::string("{\"schema\":2}"),
-		std::string("{\"schema\":1,\"fetched_at\":0}"), std::string(kMaxPayloadBytes + 1, ' ')}) {
-		std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
-		assert(!LoadCache(path));
-	}
-	std::filesystem::remove_all(root);
-	std::cout << "PASS: disk cache round-trip/replacement, missing/corrupt/oversized cache, write failure\n";
-}
-}
+}  // namespace
 
 int main() {
-	TestParsing();
+	TestConstants();
+	TestGrids();
 	TestCountdowns();
 	TestHelltideBoundaries();
-	TestFormattingAndExpiry();
-	TestCache();
+	TestFormatting();
+	std::cout << "PASS: verified 210/25/60-minute grids, exact starts and Helltide boundaries\n";
+	std::cout << "PASS: midnight rollover, localized durations and wall clock\n";
 }
