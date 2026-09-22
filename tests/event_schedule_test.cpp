@@ -4,6 +4,7 @@
 
 #include "../event_schedule.h"
 
+#include <algorithm>
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -86,8 +87,69 @@ void TestParsing() {
 	std::cout << "PASS: parse-failure reasons for empty/oversized/invalid payloads and bad keys\n";
 }
 
+void TestLocalSchedule() {
+	auto local = BuildLocalSchedule(base);
+	assert(local.Complete());
+	assert(local.fetchedAt == base);
+	assert(local.worldBossAnchor == kWorldBossAnchor);
+	assert(local.legionAnchor == kLegionAnchor);
+	// The grid starts two periods before now so an already-running phase is
+	// recoverable: base (2026-09-22 00:00Z) sits exactly on the hour and on
+	// the 25-minute legion grid.
+	assert(local.helltide.front() == base - 2 * kHelltidePeriod);
+	assert(local.helltide[2] == base && local.helltide[3] == base + kHelltidePeriod);
+	assert(local.legion.front() == base - 2 * kLegionPeriod);
+	assert(local.legion[2] == base && local.legion[3] == base + kLegionPeriod);
+	// base is 446400 s after the boss anchor (35.43 periods), so the first
+	// list point is the 34th grid point (base - 18000) and the next is +7200.
+	assert(local.worldBoss.front() == base - 18000);
+	assert(local.worldBoss[1] == base - 5400 && local.worldBoss[2] == base + 7200);
+	const auto last = base + 48 * 60 * 60;
+	auto checkGrid = [&](const std::vector<UnixSeconds>& list, UnixSeconds anchor,
+		UnixSeconds period) {
+		assert(!list.empty() && *std::prev(list.end()) <= last);
+		assert(std::is_sorted(list.begin(), list.end()) &&
+			std::adjacent_find(list.begin(), list.end(),
+			[](auto a, auto b) { return b <= a; }) == list.end());
+		for (auto t : list)
+			assert((t - anchor) % period == 0 && t - anchor >= -2 * period);
+	};
+	checkGrid(local.worldBoss, kWorldBossAnchor, kWorldBossPeriod);
+	checkGrid(local.legion, kLegionAnchor, kLegionPeriod);
+	checkGrid(local.helltide, 0, kHelltidePeriod);
+
+	// Countdowns over a full local grid are exact, not flagged as predictions.
+	auto timers = CalculateTimers(local, base + 300);
+	assert(!timers.Estimated() && !timers.expired);
+	assert(timers.worldBoss.phase == Phase::StartsIn && timers.worldBoss.seconds == 6900);
+	assert(timers.legion.phase == Phase::StartsIn && timers.legion.seconds == 1200);
+	assert(timers.helltide.phase == Phase::EndsIn && timers.helltide.seconds == 3000);
+
+	// A clock before the anchor still lands on the anchor's own grid: now is
+	// 4000 s before the anchor, so the window now-2*period starts just past
+	// the grid point two periods before the anchor.
+	auto early = BuildLocalSchedule(kWorldBossAnchor - 4000);
+	assert(early.Complete() &&
+		early.worldBoss.front() == kWorldBossAnchor - 2 * kWorldBossPeriod);
+	// A clock exactly on the grid counts that point as the current start.
+	auto onGrid = BuildLocalSchedule(kWorldBossAnchor + 3 * kWorldBossPeriod);
+	auto atStart = CalculateTimers(onGrid, onGrid.fetchedAt);
+	assert(atStart.worldBoss.seconds == 0 && !atStart.worldBoss.estimated);
+	// A shifted anchor moves the whole grid by the same offset.
+	auto shifted = BuildLocalSchedule(base, kWorldBossAnchor + 600, kLegionAnchor);
+	assert(shifted.worldBoss.front() == base - 18000 + 600);
+	// Unusable clocks or anchors yield an incomplete schedule, never a crash.
+	assert(!BuildLocalSchedule(0).Complete());
+	assert(!BuildLocalSchedule(std::numeric_limits<UnixSeconds>::max()).Complete());
+	assert(!BuildLocalSchedule(base, 0, kLegionAnchor).Complete());
+	assert(!BuildLocalSchedule(base, kWorldBossAnchor, 1).Complete());
+	std::cout << "PASS: local schedule grids, 48-hour horizon, exact countdowns and anchors\n";
+}
+
 void TestCountdowns() {
 	auto schedule = Example();
+	assert(schedule.worldBossAnchor == base + 7200);  // re-derived from the list
+	assert(schedule.legionAnchor == base + 1500);
 	auto view = CalculateTimers(schedule, base + 300);
 	assert(view.worldBoss.phase == Phase::StartsIn && view.worldBoss.seconds == 6900);
 	assert(view.legion.phase == Phase::StartsIn && view.legion.seconds == 1200);
@@ -171,7 +233,26 @@ void TestCache() {
 	assert(!SaveCache(path / "not-a-directory.json", schedule));
 	assert(LoadCache(path));
 
+	// Schema 2 persists the local-clock anchors; a schema 1 cache still loads
+	// and falls back to the built-in phase references.
+	auto anchored = Example();
+	anchored.worldBossAnchor = base + 7200;
+	anchored.legionAnchor = base + 1500;
+	assert(SaveCache(path, anchored));
+	loaded = LoadCache(path);
+	assert(loaded && loaded->worldBossAnchor == base + 7200 &&
+		loaded->legionAnchor == base + 1500);
+	{
+		std::ofstream v1(path, std::ios::binary | std::ios::trunc);
+		v1 << std::string("{\"schema\":1,\"fetched_at\":") + std::to_string(base) +
+			",\"schedule\":" + Payload() + "}";
+	}
+	loaded = LoadCache(path);
+	assert(loaded && loaded->worldBossAnchor == kWorldBossAnchor &&
+		loaded->legionAnchor == kLegionAnchor);
+
 	for (const auto& text : {std::string("{"), std::string("{\"schema\":2}"),
+		std::string("{\"schema\":3}"),
 		std::string("{\"schema\":1,\"fetched_at\":0}"), std::string(kMaxPayloadBytes + 1, ' ')}) {
 		std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
 		assert(!LoadCache(path));
@@ -183,6 +264,7 @@ void TestCache() {
 
 int main() {
 	TestParsing();
+	TestLocalSchedule();
 	TestCountdowns();
 	TestHelltideBoundaries();
 	TestFormattingAndExpiry();

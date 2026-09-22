@@ -49,7 +49,13 @@ or the reserved exit key F9 is rejected with a localized hint.
   for example late at night, before the next daily list appears — countdowns
   continue as predictions using the 210/25/60-minute cycles. Cache older than
   seven days is shown as expired, not live. With neither valid cache nor
-  network data, the panel displays **No data**.
+  network data the panel falls back to a deterministic local clock — Helltide
+  on the hour, World Boss every 210 minutes and Legion every 25 minutes — so a
+  Cloudflare block or any publisher outage never leaves it showing **No data**.
+  A successful fetch re-derives the local clock's phase from the publisher's
+  lists and stores it in the cache (schema 2), keeping the fallback in sync
+  with the real schedule after patches change it; the locally computed
+  schedule itself is never written to disk.
 * Every refresh is logged to `%APPDATA%\\d4rt\\event_log.txt`: one timestamped
   line per attempt with the fetch outcome (HTTP status or the failed WinHTTP
   stage with its Win32 code), the parse result, the cache outcome and the
@@ -116,7 +122,13 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
   ответы не затирают последний рабочий кэш. Использование кэша и прогнозов помечено;
   после окончания списка отсчёт продолжается от последней известной точки по
   циклам 210/25/60 минут. Кэш старше семи дней считается устаревшим.
-  При отсутствии сети и корректного кэша отображается **Нет данных**.
+  При отсутствии и сети, и корректного кэша панель переключается на
+  детерминированный локальный расчёт — Адский натиск каждый час,
+  Мировой босс каждые 210 минут, Легион каждые 25 минут — поэтому блокировки
+  Cloudflare или сбои источника не оставляют её без данных. Удачная загрузка
+  пересчитывает фазу локального расчёта по спискам сайта и сохраняет её в кэше
+  (схема 2), чтобы после патчей фолбэк совпадал с реальным расписанием;
+  сами локальные расписания на диск не записываются.
 * Каждая попытка обновления записывается в `%APPDATA%\\d4rt\\event_log.txt`:
   одна строка с отметкой времени на попытку — результат получения
   (HTTP-статус или отказавшая стадия WinHTTP с кодом Win32), результат

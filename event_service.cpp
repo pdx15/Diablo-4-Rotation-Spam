@@ -178,7 +178,9 @@ namespace {
 		return "boss=" + std::to_string(schedule.worldBoss.size()) +
 			" legion=" + std::to_string(schedule.legion.size()) +
 			" helltide=" + std::to_string(schedule.helltide.size()) +
-			" fetched_at=" + std::to_string(schedule.fetchedAt);
+			" fetched_at=" + std::to_string(schedule.fetchedAt) +
+			" wb_anchor=" + std::to_string(schedule.worldBossAnchor) +
+			" legion_anchor=" + std::to_string(schedule.legionAnchor);
 	}
 }  // namespace
 
@@ -249,6 +251,18 @@ void Service::Run(std::stop_token stop) {
 		}
 		if (stop.stop_requested()) break;
 		bool refreshed = false;
+		// The panel must not go blank while the publisher is unreachable
+		// (Cloudflare blocks, outages, no network): fall back to the
+		// deterministic local clock when there is no complete, unexpired
+		// publisher schedule. A fresh cache stays authoritative — its lists
+		// and projections already sit on the same grids.
+		bool localFallback = false;
+		{
+			std::lock_guard lock(stateMutex_);
+			const auto now = Now();
+			localFallback = !fresh &&
+				(!schedule_.Complete() || now - schedule_.fetchedAt > kMaxCacheAge);
+		}
 		{
 			// Logged before the new state becomes visible, so a reader that
 			// just observed it never misses the matching refresh line.
@@ -260,6 +274,7 @@ void Service::Run(std::stop_token stop) {
 					: saved ? "; cache saved" : "; cache write failed";
 			}
 			refresh += fresh ? "; state=online" : "; state=offline";
+			if (localFallback) refresh += "; local schedule from anchors";
 			LogEvent(refresh);
 			std::lock_guard lock(stateMutex_);
 			if (fresh) {
@@ -268,7 +283,16 @@ void Service::Run(std::stop_token stop) {
 				cacheWriteFailed_ = !saved;
 				refreshed = true;
 			}
-			else sync_ = SyncState::Offline;
+			else {
+				sync_ = SyncState::Offline;
+				if (localFallback) {
+					// In-memory only: a locally generated schedule must never
+					// replace the last good publisher cache on disk.
+					auto local = BuildLocalSchedule(Now(), schedule_.worldBossAnchor,
+						schedule_.legionAnchor);
+					if (local.Complete()) schedule_ = std::move(local);
+				}
+			}
 		}
 		std::unique_lock wait(waitMutex_);
 		wake_.wait_for(wait, stop, std::chrono::seconds(

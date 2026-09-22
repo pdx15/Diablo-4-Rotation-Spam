@@ -119,6 +119,18 @@ namespace {
 		return result;
 	}
 
+	// The local schedule spans two days, plenty for the five-minute refresh
+	// cycle and a full day of machine sleep.
+	constexpr UnixSeconds kLocalHorizon = 48 * 60 * 60;
+
+	// Smallest t on the grid anchor + n*period with t >= lowerBound.
+	UnixSeconds FirstGridPoint(UnixSeconds anchor, UnixSeconds period, UnixSeconds lowerBound) {
+		const auto offset = lowerBound - anchor;
+		auto steps = offset / period;  // truncates toward zero
+		if (offset % period != 0 && offset > 0) ++steps;
+		return anchor + steps * period;
+	}
+
 	Countdown NextStart(const std::vector<UnixSeconds>& starts, UnixSeconds now,
 		UnixSeconds period) {
 		auto next = std::lower_bound(starts.begin(), starts.end(), now);
@@ -162,7 +174,34 @@ std::optional<Schedule> ParseSchedule(const std::string& json, UnixSeconds fetch
 			*failureDetail = "invalid JSON (" + std::to_string(json.size()) + " bytes)";
 		return std::nullopt;
 	}
-	return ReadSchedule(root, fetchedAt, failureDetail);
+	auto schedule = ReadSchedule(root, fetchedAt, failureDetail);
+	if (schedule) {
+		// A publisher list is the true current grid; remember its phase so a
+		// later local fallback (publisher blocked) stays in sync with it.
+		schedule->worldBossAnchor = schedule->worldBoss.front();
+		schedule->legionAnchor = schedule->legion.front();
+	}
+	return schedule;
+}
+
+Schedule BuildLocalSchedule(UnixSeconds now, UnixSeconds worldBossAnchor, UnixSeconds legionAnchor) {
+	Schedule result;
+	if (now < kEarliestTimestamp || now > kLatestTimestamp ||
+		worldBossAnchor < kEarliestTimestamp || worldBossAnchor > kLatestTimestamp ||
+		legionAnchor < kEarliestTimestamp || legionAnchor > kLatestTimestamp) return result;
+	result.fetchedAt = now;
+	result.worldBossAnchor = worldBossAnchor;
+	result.legionAnchor = legionAnchor;
+	// Two past grid points keep an active phase recoverable by CalculateTimers.
+	auto fill = [&](std::vector<UnixSeconds>& list, UnixSeconds anchor, UnixSeconds period) {
+		auto start = FirstGridPoint(anchor, period, now - 2 * period);
+		const auto last = now + kLocalHorizon;
+		for (auto t = start; t <= last; t += period) list.push_back(t);
+	};
+	fill(result.worldBoss, worldBossAnchor, kWorldBossPeriod);
+	fill(result.legion, legionAnchor, kLegionPeriod);
+	fill(result.helltide, 0, kHelltidePeriod);
+	return result;
 }
 
 Timers CalculateTimers(const Schedule& schedule, UnixSeconds now) {
@@ -217,11 +256,21 @@ std::optional<Schedule> LoadCache(const std::filesystem::path& path) {
 	text.resize(static_cast<std::size_t>(input.gcount()));
 	if (input.bad()) return std::nullopt;
 	picojson::value root;
-	if (!ParseJson(text, root) || !root.get("schema").is<double>() ||
-		root.get("schema").get<double>() != 1) return std::nullopt;
+	if (!ParseJson(text, root)) return std::nullopt;
+	const auto& schema = root.get("schema");
+	if (!schema.is<double>() || (schema.get<double>() != 1 && schema.get<double>() != 2))
+		return std::nullopt;
 	auto fetchedAt = Timestamp(root.get("fetched_at"));
 	if (!fetchedAt) return std::nullopt;
-	return ReadSchedule(root.get("schedule"), *fetchedAt);
+	auto schedule = ReadSchedule(root.get("schedule"), *fetchedAt);
+	if (!schedule) return std::nullopt;
+	// Schema 1 caches predate the anchor fields: fall back to the built-in
+	// phase references. Malformed anchors are dropped the same way.
+	if (auto anchor = Timestamp(root.get("world_boss_anchor")))
+		schedule->worldBossAnchor = *anchor;
+	if (auto anchor = Timestamp(root.get("legion_anchor")))
+		schedule->legionAnchor = *anchor;
+	return schedule;
 }
 
 bool SaveCache(const std::filesystem::path& path, const Schedule& schedule) {
@@ -233,8 +282,10 @@ bool SaveCache(const std::filesystem::path& path, const Schedule& schedule) {
 	});
 	if (!ReadSchedule(data, schedule.fetchedAt)) return false;
 	picojson::value root(picojson::object{
-		{ "schema", picojson::value(1.0) },
+		{ "schema", picojson::value(2.0) },
 		{ "fetched_at", picojson::value(static_cast<double>(schedule.fetchedAt)) },
+		{ "world_boss_anchor", picojson::value(static_cast<double>(schedule.worldBossAnchor)) },
+		{ "legion_anchor", picojson::value(static_cast<double>(schedule.legionAnchor)) },
 		{ "schedule", data }
 	});
 	const auto text = root.serialize();

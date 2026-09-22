@@ -121,10 +121,23 @@ int main() {
 		service.Start();
 		auto view = WaitForResult(service);
 		assert(view.sync == events::SyncState::Offline);
-		assert(view.timers.worldBoss.phase == events::Phase::Unknown);
+		// No cache and an unreachable publisher (e.g. blocked by Cloudflare):
+		// the deterministic local clock (hourly helltide, 210-minute boss,
+		// 25-minute legion) keeps the panel alive instead of showing no data.
+		assert(view.timers.worldBoss.phase == events::Phase::StartsIn &&
+			0 <= view.timers.worldBoss.seconds &&
+			view.timers.worldBoss.seconds <= events::kWorldBossPeriod);
+		assert(view.timers.legion.phase == events::Phase::StartsIn &&
+			0 <= view.timers.legion.seconds &&
+			view.timers.legion.seconds <= events::kLegionPeriod);
+		assert((view.timers.helltide.phase == events::Phase::EndsIn ||
+			view.timers.helltide.phase == events::Phase::Break) &&
+			0 < view.timers.helltide.seconds && view.timers.helltide.seconds <= 55 * 60);
+		assert(!events::LoadCache(path)); // the local schedule never touches disk
 	}
 	assert(fake_winhttp::handles == 0);
-	std::cout << "PASS: no cache plus no network gives no invented timers\n";
+	assert(ReadLog(logPath).find("local schedule from anchors") != std::string::npos);
+	std::cout << "PASS: no cache plus no network falls back to the unpersisted local schedule\n";
 
 	std::ofstream(root / "blocked") << "not a directory";
 	fake_win32::appData = (root / "blocked").string();
