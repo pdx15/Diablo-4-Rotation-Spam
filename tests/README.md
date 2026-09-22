@@ -44,7 +44,7 @@ c++ -std=c++20 -Wall -Wextra -Wpedantic -pthread \
     tests/event_schedule_test.cpp event_schedule.cpp -o out/event_schedule_test
 ./out/event_schedule_test
 c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
-    -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp \
+    -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp event_log.cpp \
     -o out/event_service_test
 ./out/event_service_test
 ```
@@ -52,15 +52,18 @@ c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
 The schedule tests exercise the real parser/calculator/cache with fixed Unix
 seconds: structured/nested JSON, sorting, deduplication, exhausted daily lists
 that still feed predictions, malformed/oversized
-responses, boss/legion phase rollover across midnight, Helltide's 55/60-minute
-boundaries, localized durations, predictions, seven-day expiry and atomic disk
-cache replacement. No current timezone or live endpoint is needed.
+responses, parse-failure reasons, boss/legion phase rollover across midnight,
+Helltide's 55/60-minute boundaries, localized durations, predictions, seven-day
+expiry and atomic disk cache replacement. No current timezone or live endpoint
+is needed.
 
 The service tests compile the real background worker against test-only WinHTTP
 stand-ins: HTTPS request path, lazy/idempotent start, nonblocking UI snapshots,
 cancellable refresh wait, handle cleanup, cached restart after network/429/read/
-JSON failures, missing cache, and unwritable cache. They do not contact the service.
-Both binaries can also be built with the sanitizer flags above.
+JSON failures, missing cache, and unwritable cache. They also verify the event
+log records startup, cache, fetch/parse failure markers and states, and that
+log rotation caps the file while keeping the newest lines. They do not contact
+the service. Both binaries can also be built with the sanitizer flags above.
 
 The macro suite additionally checks the Events binding, conflicts, old configs,
 profile-independent persistence, key capture and actual hotkey-monitor toggling.
@@ -131,9 +134,13 @@ Build and run the application with Visual Studio, then verify:
    down from `%APPDATA%\d4rt\events_cache.json`. After the supplied event list
    ends, predictions continue using the 210/25/60-minute cycles. Missing/corrupt/
    older-than-seven-day cache plus no network must show No data rows, not a
-   fabricated live schedule. The panel has no sync status line; a failed cache
-   write is reported with a localized message.
+  fabricated live schedule. The panel has no sync status line; a failed cache
+  write is reported with a localized message.
 6. Check both OS UI languages, including the write-error strings.
+7. Open `%APPDATA%\\d4rt\\event_log.txt`: each refresh is one timestamped line
+  with the fetch outcome, parse result, cache outcome and state. Disconnect
+  the network, wait for a retry, and confirm a failure line appears while the
+  panel keeps showing cached timers.
 
 ## HUD layout smoke test
 

@@ -43,7 +43,7 @@ jobs:
             tests/event_schedule_test.cpp event_schedule.cpp -o out/event_schedule_test
           ./out/event_schedule_test
           c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
-            -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp \
+            -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp event_log.cpp \
             -o out/event_service_test
           ./out/event_service_test
 

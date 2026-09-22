@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 	<ItemGroup>
 		<Filter Include="Исходные файлы">
@@ -15,6 +15,9 @@
 		</Filter>
 	</ItemGroup>
 	<ItemGroup>
+		<ClCompile Include="event_log.cpp">
+			<Filter>Исходные файлы</Filter>
+		</ClCompile>
 		<ClCompile Include="event_schedule.cpp">
 			<Filter>Исходные файлы</Filter>
 		</ClCompile>
@@ -50,6 +53,9 @@
 		</ClCompile>
 	</ItemGroup>
 	<ItemGroup>
+		<ClInclude Include="event_log.h">
+			<Filter>Файлы заголовков</Filter>
+		</ClInclude>
 		<ClInclude Include="event_schedule.h">
 			<Filter>Файлы заголовков</Filter>
 		</ClInclude>

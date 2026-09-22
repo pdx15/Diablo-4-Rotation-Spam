@@ -66,12 +66,22 @@ namespace {
 		return static_cast<UnixSeconds>(number);
 	}
 
+	bool FailDetail(std::string* detail, const char* key, const std::string& why) {
+		if (detail) *detail = std::string("schedule key '") + key + "': " + why;
+		return false;
+	}
+
 	bool ReadStarts(const picojson::value& root, const char* key, UnixSeconds fetchedAt,
-		std::vector<UnixSeconds>& result) {
+		std::vector<UnixSeconds>& result, std::string* detail = nullptr) {
 		const auto& list = root.get(key);
-		if (!list.is<picojson::array>()) return false;
+		if (!list.is<picojson::array>())
+			return FailDetail(detail, key, "missing or not an array");
 		const auto& array = list.get<picojson::array>();
-		if (array.empty() || array.size() > kMaxEventsPerType) return false;
+		if (array.empty()) return FailDetail(detail, key, "empty list");
+		if (array.size() > kMaxEventsPerType)
+			return FailDetail(detail, key, "too many entries (" +
+				std::to_string(kMaxEventsPerType) + " max, got " +
+				std::to_string(array.size()) + ")");
 		for (const auto& entry : array) {
 			if (!entry.is<picojson::object>()) continue;
 			auto timestamp = Timestamp(entry.get("timestamp"));
@@ -80,17 +90,28 @@ namespace {
 		}
 		std::sort(result.begin(), result.end());
 		result.erase(std::unique(result.begin(), result.end()), result.end());
-		return !result.empty();
+		if (result.empty())
+			return FailDetail(detail, key, "no timestamps within range (" +
+				std::to_string(array.size()) + " entr" +
+				(array.size() == 1 ? "y" : "ies") + ")");
+		return true;
 	}
 
-	std::optional<Schedule> ReadSchedule(const picojson::value& root, UnixSeconds fetchedAt) {
-		if (!root.is<picojson::object>() || fetchedAt < kEarliestTimestamp ||
-			fetchedAt > kLatestTimestamp) return std::nullopt;
+	std::optional<Schedule> ReadSchedule(const picojson::value& root, UnixSeconds fetchedAt,
+		std::string* detail = nullptr) {
+		if (!root.is<picojson::object>()) {
+			if (detail) *detail = "schedule root is not a JSON object";
+			return std::nullopt;
+		}
+		if (fetchedAt < kEarliestTimestamp || fetchedAt > kLatestTimestamp) {
+			if (detail) *detail = "fetch time out of range";
+			return std::nullopt;
+		}
 		Schedule result;
 		result.fetchedAt = fetchedAt;
-		if (!ReadStarts(root, "world_boss", fetchedAt, result.worldBoss) ||
-			!ReadStarts(root, "legion", fetchedAt, result.legion) ||
-			!ReadStarts(root, "helltide", fetchedAt, result.helltide)) return std::nullopt;
+		if (!ReadStarts(root, "world_boss", fetchedAt, result.worldBoss, detail) ||
+			!ReadStarts(root, "legion", fetchedAt, result.legion, detail) ||
+			!ReadStarts(root, "helltide", fetchedAt, result.helltide, detail)) return std::nullopt;
 		// helltides.com publishes a daily list, so every listed event may
 		// already be in the past by the time it is fetched. That must still
 		// count as valid data: the cycle predictions below keep the timers
@@ -124,10 +145,24 @@ UnixSeconds Now() {
 		std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-std::optional<Schedule> ParseSchedule(const std::string& json, UnixSeconds fetchedAt) {
+std::optional<Schedule> ParseSchedule(const std::string& json, UnixSeconds fetchedAt,
+	std::string* failureDetail) {
+	if (json.empty()) {
+		if (failureDetail) *failureDetail = "empty response body";
+		return std::nullopt;
+	}
+	if (json.size() > kMaxPayloadBytes) {
+		if (failureDetail)
+			*failureDetail = "response too large (" + std::to_string(json.size()) + " bytes)";
+		return std::nullopt;
+	}
 	picojson::value root;
-	if (!ParseJson(json, root)) return std::nullopt;
-	return ReadSchedule(root, fetchedAt);
+	if (!ParseJson(json, root)) {
+		if (failureDetail)
+			*failureDetail = "invalid JSON (" + std::to_string(json.size()) + " bytes)";
+		return std::nullopt;
+	}
+	return ReadSchedule(root, fetchedAt, failureDetail);
 }
 
 Timers CalculateTimers(const Schedule& schedule, UnixSeconds now) {

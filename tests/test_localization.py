@@ -31,8 +31,9 @@ class LocalizationTests(unittest.TestCase):
 
     def test_event_files_are_registered_in_visual_studio(self):
         ns = {"m": "http://schemas.microsoft.com/developer/msbuild/2003"}
-        sources = {"event_schedule.cpp", "event_service.cpp"}
-        headers = {"event_schedule.h", "event_service.h", "third_party\\picojson\\picojson.h"}
+        sources = {"event_schedule.cpp", "event_service.cpp", "event_log.cpp"}
+        headers = {"event_schedule.h", "event_service.h", "event_log.h",
+                   "third_party\\picojson\\picojson.h"}
         for name in ("diablo 4.vcxproj", "diablo 4.vcxproj.filters"):
             project = ET.parse(ROOT / name)
             compiled = {item.attrib["Include"] for item in project.findall(".//m:ClCompile[@Include]", ns)}

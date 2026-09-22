@@ -67,6 +67,7 @@ inline std::function<void(int)> onKeyQuery;
 inline std::vector<INPUT> inputs;
 inline std::function<void(int)> beforeTick;
 inline std::string appData;
+inline DWORD lastError = 0;
 inline LANGID language = 9;
 inline std::map<int, std::string> resources;
 }
@@ -116,3 +117,5 @@ inline DWORD SizeofResource(HMODULE, HRSRC resource) {
 }
 inline void* LockResource(HGLOBAL data) { return static_cast<std::string*>(data)->data(); }
 inline LANGID GetUserDefaultUILanguage() { return fake_win32::language; }
+inline DWORD GetLastError() { return fake_win32::lastError; }
+inline void SetLastError(DWORD error) { fake_win32::lastError = error; }

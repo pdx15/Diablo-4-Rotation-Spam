@@ -52,7 +52,10 @@ struct Timers {
 
 UnixSeconds Now();
 // All arithmetic uses Unix seconds, never local time or a timezone offset.
-std::optional<Schedule> ParseSchedule(const std::string& json, UnixSeconds fetchedAt);
+// When failureDetail is not null it receives a short English reason if parsing
+// fails; it is left untouched on success.
+std::optional<Schedule> ParseSchedule(const std::string& json, UnixSeconds fetchedAt,
+	std::string* failureDetail = nullptr);
 Timers CalculateTimers(const Schedule& schedule, UnixSeconds now);
 std::string FormatDuration(UnixSeconds seconds, const std::string& hoursUnit,
 	const std::string& minutesUnit);

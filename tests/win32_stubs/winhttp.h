@@ -12,6 +12,9 @@ constexpr DWORD WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY = 4;
 constexpr unsigned short INTERNET_DEFAULT_HTTPS_PORT = 443;
 constexpr DWORD WINHTTP_FLAG_SECURE = 0x800000;
 constexpr DWORD WINHTTP_QUERY_STATUS_CODE = 19, WINHTTP_QUERY_FLAG_NUMBER = 0x20000000;
+constexpr DWORD ERROR_WINHTTP_TIMEOUT = 12002;
+constexpr DWORD ERROR_WINHTTP_CANNOT_CONNECT = 12029;
+constexpr DWORD ERROR_WINHTTP_CONNECTION_ERROR = 12030;
 #define WINHTTP_NO_PROXY_NAME nullptr
 #define WINHTTP_NO_PROXY_BYPASS nullptr
 #define WINHTTP_NO_REFERER nullptr
@@ -39,6 +42,7 @@ inline void Reset(const std::string& payload) {
 	networkFailure = readFailure = false;
 	body = payload;
 	blockResponse = responseEntered = responseReleased = false;
+	fake_win32::lastError = 0;
 }
 inline HINTERNET NewHandle() { ++handles; return new Handle; }
 }
@@ -67,16 +71,22 @@ inline HINTERNET WinHttpOpenRequest(HINTERNET, const wchar_t* method, const wcha
 }
 inline int WinHttpSendRequest(HINTERNET, const wchar_t*, DWORD, void*, DWORD, DWORD, std::uintptr_t) {
 	++fake_winhttp::requests;
-	return !fake_winhttp::networkFailure;
+	if (fake_winhttp::networkFailure) {
+		fake_win32::lastError = ERROR_WINHTTP_CANNOT_CONNECT;
+		return 0;
+	}
+	return 1;
 }
 inline int WinHttpReceiveResponse(HINTERNET, void*) {
 	std::unique_lock lock(fake_winhttp::mutex);
 	fake_winhttp::responseEntered = true;
 	fake_winhttp::condition.notify_all();
 	if (fake_winhttp::blockResponse) {
-		return fake_winhttp::condition.wait_for(lock, std::chrono::seconds(2), [] {
+		const bool released = fake_winhttp::condition.wait_for(lock, std::chrono::seconds(2), [] {
 			return fake_winhttp::responseReleased;
 		});
+		if (!released) fake_win32::lastError = ERROR_WINHTTP_TIMEOUT;
+		return released;
 	}
 	return 1;
 }
@@ -85,7 +95,10 @@ inline int WinHttpQueryHeaders(HINTERNET, DWORD, const wchar_t*, void* status, D
 	return 1;
 }
 inline int WinHttpReadData(HINTERNET handle, void* buffer, DWORD capacity, DWORD* read) {
-	if (fake_winhttp::readFailure) return 0;
+	if (fake_winhttp::readFailure) {
+		fake_win32::lastError = ERROR_WINHTTP_CONNECTION_ERROR;
+		return 0;
+	}
 	auto& offset = static_cast<fake_winhttp::Handle*>(handle)->offset;
 	*read = static_cast<DWORD>(std::min<std::size_t>(capacity, fake_winhttp::body.size() - offset));
 	std::memcpy(buffer, fake_winhttp::body.data() + offset, *read);

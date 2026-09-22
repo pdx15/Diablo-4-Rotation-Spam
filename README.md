@@ -50,6 +50,11 @@ or the reserved exit key F9 is rejected with a localized hint.
   continue as predictions using the 210/25/60-minute cycles. Cache older than
   seven days is shown as expired, not live. With neither valid cache nor
   network data, the panel displays **No data**.
+* Every refresh is logged to `%APPDATA%\\d4rt\\event_log.txt`: one timestamped
+  line per attempt with the fetch outcome (HTTP status or the failed WinHTTP
+  stage with its Win32 code), the parse result, the cache outcome and the
+  state. The log is capped at 256 KB with older lines discarded first; if the
+  panel shows **No data**, attach this file when reporting the issue.
 * English/Russian labels include loading, offline, expired-cache and write-error
   states. `Helltides.com` is a third-party source; timings may change after patches.
 
@@ -112,6 +117,12 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
   после окончания списка отсчёт продолжается от последней известной точки по
   циклам 210/25/60 минут. Кэш старше семи дней считается устаревшим.
   При отсутствии сети и корректного кэша отображается **Нет данных**.
+* Каждая попытка обновления записывается в `%APPDATA%\\d4rt\\event_log.txt`:
+  одна строка с отметкой времени на попытку — результат получения
+  (HTTP-статус или отказавшая стадия WinHTTP с кодом Win32), результат
+  разбора, исход записи кэша и состояние. Размер журнала ограничен 256 КБ,
+  старые строки удаляются первыми; если панель показывает **Нет данных**,
+  приложите этот файл к сообщению о проблеме.
 * Подписи и сообщения о загрузке, отсутствии связи, устаревшем кэше и ошибке записи
   переведены на русский и английский. Helltides.com — сторонний источник;
   после обновлений игры расписание может меняться.
