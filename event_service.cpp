@@ -42,25 +42,53 @@ namespace {
 			if (detail) *detail = std::move(reason);
 			return std::nullopt;
 		};
-		// A browser-like agent string: some CDN/WAF setups reject unknown
-		// clients before any JSON is served, while the site works in browsers.
-		HttpHandle session(WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-			L"d4rt/" APP_VERSION_STR_W,
+		// A standard browser agent string: Cloudflare / CDN WAF setups reject
+		// unknown non-browser clients before any JSON is served.
+		HttpHandle session(WinHttpOpen(
+			L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 			WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
 			WINHTTP_NO_PROXY_BYPASS, 0));
 		if (!session) return fail("WinHttpOpen failed " + Win32Error(GetLastError()));
 		if (!WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 5000))
 			return fail("WinHttpSetTimeouts failed " + Win32Error(GetLastError()));
+
+#ifndef WINHTTP_OPTION_SECURE_PROTOCOLS
+#define WINHTTP_OPTION_SECURE_PROTOCOLS 84
+#endif
+#ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
+#define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 0x00000800
+#endif
+#ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3
+#define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3 0x00002000
+#endif
+		DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+		WinHttpSetOption(session.get(), WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+
+#ifndef WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL
+#define WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL 133
+#endif
+#ifndef WINHTTP_PROTOCOL_FLAG_HTTP2
+#define WINHTTP_PROTOCOL_FLAG_HTTP2 0x1
+#endif
+		DWORD httpProtocol = WINHTTP_PROTOCOL_FLAG_HTTP2;
+		WinHttpSetOption(session.get(), WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &httpProtocol, sizeof(httpProtocol));
+
 		HttpHandle connection(WinHttpConnect(session.get(), L"helltides.com",
 			INTERNET_DEFAULT_HTTPS_PORT, 0));
 		if (!connection)
 			return fail("WinHttpConnect to helltides.com:443 failed " + Win32Error(GetLastError()));
 		HttpHandle request(WinHttpOpenRequest(connection.get(), L"GET", L"/api/schedule",
-			nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
+			nullptr, L"https://helltides.com/", WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
 		if (!request)
 			return fail("WinHttpOpenRequest for /api/schedule failed " + Win32Error(GetLastError()));
 		if (stop.stop_requested()) return fail("cancelled before send");
-		const wchar_t* headers = L"Accept: application/json\r\n";
+		const wchar_t* headers =
+			L"Accept: application/json, text/plain, */*\r\n"
+			L"Referer: https://helltides.com/\r\n"
+			L"Accept-Language: en-US,en;q=0.9\r\n"
+			L"Sec-Fetch-Dest: empty\r\n"
+			L"Sec-Fetch-Mode: cors\r\n"
+			L"Sec-Fetch-Site: same-origin\r\n";
 		if (!WinHttpSendRequest(request.get(), headers, static_cast<DWORD>(-1),
 			WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
 			return fail("WinHttpSendRequest failed " + Win32Error(GetLastError()));
