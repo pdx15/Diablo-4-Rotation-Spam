@@ -5,7 +5,7 @@
 #include <d3d11.h>
 #include <shellapi.h>
 
-#include "imgui/imgui.h"
+#include "third_party/imgui/imgui.h"
 #include "resource.h"
 
 #pragma comment(lib, "d3d11.lib")
