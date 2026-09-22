@@ -126,8 +126,25 @@ Build and run the application with Visual Studio, then verify:
 4. Leave the panel open across a five-minute refresh. A slow/offline connection
    must not freeze the HUD or combat automation. Hide and reopen the panel;
    this must not create another background worker or flood the endpoint.
-5. After a successful sync, disconnect and restart: cached timers remain, with a
-   cache label. After the supplied event list ends, predicted times are explicitly
-   labeled. Missing/corrupt/older-than-seven-day cache plus no network must show
-   No data/Cache expired, not a fabricated live schedule.
-6. Check both OS UI languages, including the longest offline/write-error strings.
+5. After a successful sync, disconnect and restart: cached timers keep counting
+   down from `%APPDATA%\d4rt\events_cache.json`. After the supplied event list
+   ends, predictions continue using the 210/25/60-minute cycles. Missing/corrupt/
+   older-than-seven-day cache plus no network must show No data rows, not a
+   fabricated live schedule. The panel has no sync status line; a failed cache
+   write is reported with a localized message.
+6. Check both OS UI languages, including the write-error strings.
+
+## HUD layout smoke test
+
+1. With the options window closed, clicks over and around the HUD panels must
+   reach the game; panels stay invisible to the cursor.
+2. Open Options (F5): the HUD and the events panel (if shown) can be dragged by
+   any of their free space and stretched from the bottom-right corner grip, on
+   any monitor. They cannot be collapsed and keep a sane minimum size.
+3. Close Options: the panels keep the new layout and are again fully
+   click-through while gaming.
+4. Restart the app (also from a different working directory): the layout is
+   restored from `%APPDATA%\d4rt\imgui.ini`; a legacy `imgui.ini` next to the
+   executable is migrated on first run.
+5. Delete `%APPDATA%\d4rt\imgui.ini`: panels return to the defaults (HUD at the
+   top-left, events right below it).

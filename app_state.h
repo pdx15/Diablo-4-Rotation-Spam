@@ -56,12 +56,6 @@ struct LocStrings {
 	std::string eventsEndsIn = "Ends in";
 	std::string eventsBreak = "Break";
 	std::string eventsNoData = "No data";
-	std::string eventsLoading = "Updating...";
-	std::string eventsSynced = "Synced";
-	std::string eventsCached = "Cached (offline)";
-	std::string eventsEstimated = "Estimated from cache";
-	std::string eventsExpired = "Cache expired";
-	std::string eventsUnavailable = "No connection or valid schedule";
 	std::string eventsCacheWriteFailed = "Could not save cache";
 	std::string eventsHours = "h";
 	std::string eventsMinutes = "min";
