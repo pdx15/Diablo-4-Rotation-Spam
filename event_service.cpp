@@ -42,12 +42,22 @@ namespace {
 			if (detail) *detail = std::move(reason);
 			return std::nullopt;
 		};
-		// A standard browser agent string: Cloudflare / CDN WAF setups reject
-		// unknown non-browser clients before any JSON is served.
-		HttpHandle session(WinHttpOpen(
-			L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-			WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
-			WINHTTP_NO_PROXY_BYPASS, 0));
+	// Browser impersonation: Cloudflare / CDN WAF setups reject unknown
+	// non-browser clients before any JSON is served, so the request below
+	// mirrors a real Chrome 152 navigation to
+	// https://helltides.com/api/schedule (captured 2026-09-22).
+	// Deliberately NOT copied from the capture:
+	//  - accept-encoding (gzip, deflate, br, zstd): WinHTTP only decodes
+	//    gzip/deflate (see WINHTTP_OPTION_DECOMPRESSION below) and has no
+	//    Brotli/zstd decoder, so advertising br/zstd would corrupt the body
+	//    for ParseSchedule; WinHTTP adds "Accept-Encoding: gzip, deflate"
+	//    itself once decompression is enabled.
+	//  - if-modified-since / if-none-match: per-response cache validators;
+	//    hardcoding them would pin us to an empty 304 reply.
+	HttpHandle session(WinHttpOpen(
+		L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+		WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+		WINHTTP_NO_PROXY_BYPASS, 0));
 		if (!session) return fail("WinHttpOpen failed " + Win32Error(GetLastError()));
 		if (!WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 5000))
 			return fail("WinHttpSetTimeouts failed " + Win32Error(GetLastError()));
@@ -70,25 +80,51 @@ namespace {
 #ifndef WINHTTP_PROTOCOL_FLAG_HTTP2
 #define WINHTTP_PROTOCOL_FLAG_HTTP2 0x1
 #endif
-		DWORD httpProtocol = WINHTTP_PROTOCOL_FLAG_HTTP2;
-		WinHttpSetOption(session.get(), WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &httpProtocol, sizeof(httpProtocol));
+	DWORD httpProtocol = WINHTTP_PROTOCOL_FLAG_HTTP2;
+	WinHttpSetOption(session.get(), WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &httpProtocol, sizeof(httpProtocol));
+
+	// Advertise compression like a real browser. WinHTTP then transparently
+	// inflates gzip/deflate, so the bytes read below are still plain JSON.
+	// Unsupported on Win7/8.0: the call just fails and the server falls back
+	// to an identity body, which parses the same way.
+#ifndef WINHTTP_OPTION_DECOMPRESSION
+#define WINHTTP_OPTION_DECOMPRESSION 118
+#endif
+#ifndef WINHTTP_DECOMPRESSION_FLAG_GZIP
+#define WINHTTP_DECOMPRESSION_FLAG_GZIP 0x00000001
+#endif
+#ifndef WINHTTP_DECOMPRESSION_FLAG_DEFLATE
+#define WINHTTP_DECOMPRESSION_FLAG_DEFLATE 0x00000002
+#endif
+	DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
+	WinHttpSetOption(session.get(), WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
 
 		HttpHandle connection(WinHttpConnect(session.get(), L"helltides.com",
 			INTERNET_DEFAULT_HTTPS_PORT, 0));
 		if (!connection)
 			return fail("WinHttpConnect to helltides.com:443 failed " + Win32Error(GetLastError()));
-		HttpHandle request(WinHttpOpenRequest(connection.get(), L"GET", L"/api/schedule",
-			nullptr, L"https://helltides.com/", WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
-		if (!request)
-			return fail("WinHttpOpenRequest for /api/schedule failed " + Win32Error(GetLastError()));
-		if (stop.stop_requested()) return fail("cancelled before send");
-		const wchar_t* headers =
-			L"Accept: application/json, text/plain, */*\r\n"
-			L"Referer: https://helltides.com/\r\n"
-			L"Accept-Language: en-US,en;q=0.9\r\n"
-			L"Sec-Fetch-Dest: empty\r\n"
-			L"Sec-Fetch-Mode: cors\r\n"
-			L"Sec-Fetch-Site: same-origin\r\n";
+	// WINHTTP_NO_REFERER: the captured navigation has Sec-Fetch-Site: none,
+	// i.e. the browser sent no Referer for this direct navigation.
+	HttpHandle request(WinHttpOpenRequest(connection.get(), L"GET", L"/api/schedule",
+		nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
+	if (!request)
+		return fail("WinHttpOpenRequest for /api/schedule failed " + Win32Error(GetLastError()));
+	if (stop.stop_requested()) return fail("cancelled before send");
+	// Exact header values from the captured Chrome 152 request (pseudo-headers
+	// :method/:scheme/:authority/:path are set by WinHTTP itself from the
+	// GET + WINHTTP_FLAG_SECURE + helltides.com arguments above).
+	const wchar_t* headers =
+		L"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
+		L"Accept-Language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7\r\n"
+		L"Upgrade-Insecure-Requests: 1\r\n"
+		L"Sec-Ch-Ua: \"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"\r\n"
+		L"Sec-Ch-Ua-Mobile: ?0\r\n"
+		L"Sec-Ch-Ua-Platform: \"Windows\"\r\n"
+		L"Sec-Fetch-Dest: document\r\n"
+		L"Sec-Fetch-Mode: navigate\r\n"
+		L"Sec-Fetch-Site: none\r\n"
+		L"Sec-Fetch-User: ?1\r\n"
+		L"Priority: u=0, i\r\n";
 		if (!WinHttpSendRequest(request.get(), headers, static_cast<DWORD>(-1),
 			WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
 			return fail("WinHttpSendRequest failed " + Win32Error(GetLastError()));
@@ -98,7 +134,25 @@ namespace {
 		if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
 			WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX))
 			return fail("HTTP status query failed " + Win32Error(GetLastError()));
-		if (status != 200) return fail("HTTP status " + std::to_string(status));
+		if (status != 200) {
+		// Cloudflare blocks (403 challenge, 429 rate limit, 503, ...) arrive
+		// with an HTML error page; capture its head so event_log.txt shows WHY
+		// the request was rejected instead of just the bare status code.
+		std::string snippet;
+		char errorBuffer[512];
+		DWORD errorRead = 0;
+		if (WinHttpReadData(request.get(), errorBuffer, sizeof(errorBuffer) - 1, &errorRead) &&
+			errorRead > 0) {
+			for (DWORD i = 0; i < errorRead && snippet.size() < 160; ++i) {
+				char c = errorBuffer[i];
+				snippet.push_back(c >= 32 && c < 127 ? c : ' ');
+			}
+			while (!snippet.empty() && snippet.back() == ' ') snippet.pop_back();
+		}
+		std::string reason = "HTTP status " + std::to_string(status);
+		if (!snippet.empty()) reason += " (" + snippet + ")";
+		return fail(reason);
+	}
 
 		std::string body;
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
