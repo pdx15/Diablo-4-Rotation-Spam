@@ -46,7 +46,10 @@ inline void Reset(const std::string& payload) {
 }
 inline HINTERNET NewHandle() { ++handles; return new Handle; }
 }
-inline HINTERNET WinHttpOpen(const wchar_t*, DWORD, const wchar_t*, const wchar_t*, DWORD) {
+inline HINTERNET WinHttpOpen(const wchar_t* agent, DWORD, const wchar_t*, const wchar_t*, DWORD) {
+	// The service must impersonate the captured Chrome 152 browser: Cloudflare
+	// blocks unknown/outdated user agents.
+	assert(agent && std::wstring(agent).find(L"Chrome/152.0.0.0") != std::wstring::npos);
 	return fake_winhttp::NewHandle();
 }
 inline int WinHttpCloseHandle(HINTERNET handle) {
@@ -67,13 +70,26 @@ inline HINTERNET WinHttpConnect(HINTERNET, const wchar_t* host, unsigned short p
 	return fake_winhttp::NewHandle();
 }
 inline HINTERNET WinHttpOpenRequest(HINTERNET, const wchar_t* method, const wchar_t* path,
-	const wchar_t*, const wchar_t*, const wchar_t**, DWORD flags) {
+	const wchar_t*, const wchar_t* referrer, const wchar_t**, DWORD flags) {
 	assert(std::wstring(method) == L"GET" && std::wstring(path) == L"/api/schedule");
+	assert(referrer == nullptr); // captured navigation has Sec-Fetch-Site: none
 	assert(flags & WINHTTP_FLAG_SECURE);
 	return fake_winhttp::NewHandle();
 }
-inline int WinHttpSendRequest(HINTERNET, const wchar_t*, DWORD, void*, DWORD, DWORD, std::uintptr_t) {
+inline int WinHttpSendRequest(HINTERNET, const wchar_t* headers, DWORD, void*, DWORD, DWORD, std::uintptr_t) {
 	++fake_winhttp::requests;
+	// The captured Chrome 152 header set that Cloudflare expects.
+	assert(headers);
+	const std::wstring sent(headers ? headers : L"");
+	assert(sent.find(L"Sec-Ch-Ua: \"Chromium\";v=\"152\"") != std::wstring::npos);
+	assert(sent.find(L"Sec-Ch-Ua-Mobile: ?0") != std::wstring::npos);
+	assert(sent.find(L"Sec-Ch-Ua-Platform: \"Windows\"") != std::wstring::npos);
+	assert(sent.find(L"Sec-Fetch-Dest: document") != std::wstring::npos);
+	assert(sent.find(L"Sec-Fetch-Mode: navigate") != std::wstring::npos);
+	assert(sent.find(L"Sec-Fetch-Site: none") != std::wstring::npos);
+	assert(sent.find(L"Sec-Fetch-User: ?1") != std::wstring::npos);
+	assert(sent.find(L"Upgrade-Insecure-Requests: 1") != std::wstring::npos);
+	assert(sent.find(L"Referer:") == std::wstring::npos); // none-site navigation sends no Referer
 	if (fake_winhttp::networkFailure) {
 		fake_win32::lastError = ERROR_WINHTTP_CANNOT_CONNECT;
 		return 0;
