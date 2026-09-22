@@ -36,10 +36,38 @@ Coverage:
 
 These tests do **not** validate native Win32/DX11 behavior or render the UI.
 
-## Release preparation
+## Event timers and background service
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_release.py' -v
+mkdir -p out
+c++ -std=c++20 -Wall -Wextra -Wpedantic -pthread \
+    tests/event_schedule_test.cpp event_schedule.cpp -o out/event_schedule_test
+./out/event_schedule_test
+c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
+    -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp \
+    -o out/event_service_test
+./out/event_service_test
+```
+
+The schedule tests exercise the real parser/calculator/cache with fixed Unix
+seconds: structured/nested JSON, sorting, deduplication, stale/malformed/oversized
+responses, boss/legion phase rollover across midnight, Helltide's 55/60-minute
+boundaries, localized durations, predictions, seven-day expiry and atomic disk
+cache replacement. No current timezone or live endpoint is needed.
+
+The service tests compile the real background worker against test-only WinHTTP
+stand-ins: HTTPS request path, lazy/idempotent start, nonblocking UI snapshots,
+cancellable refresh wait, handle cleanup, cached restart after network/429/read/
+JSON failures, missing cache, and unwritable cache. They do not contact the service.
+Both binaries can also be built with the sanitizer flags above.
+
+The macro suite additionally checks the Events binding, conflicts, old configs,
+profile-independent persistence, key capture and actual hotkey-monitor toggling.
+
+## Release preparation and localization
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 Requires Python 3.10+ and only the standard library. Tests cover accepted/rejected
@@ -48,7 +76,11 @@ definitions, the existing tag/title/ZIP naming scheme, bilingual release notes,
 and CLI output to `GITHUB_OUTPUT`. CLI tests use an isolated temporary copy and
 do not change the real `version.h` or call GitHub.
 
-The manual **Release** workflow runs both suites before building and publishing.
+Python tests also verify every `LocStrings` field has matching English/Russian
+resources and a language-loader mapping, and that the new sources are registered
+in both Visual Studio project files.
+
+The manual **Release** workflow runs all suites before building and publishing.
 Native MSBuild, executable resource checks, and ZIP packaging run on its Windows
 job; the actual release is not created by these local tests.
 
@@ -77,3 +109,25 @@ Build and run the application with Visual Studio, then verify:
 4. Enable the checkbox in one profile, leave it off in another, switch between
    them, and restart. Each profile must retain its own value in
    `%APPDATA%\d4rt\config.txt` (`profile.N.globalHealthIndependent=0/1`).
+
+## Windows events smoke test
+
+1. Confirm **Events: [F6] / Эвенты: [F6]** is to the right of Options. Press F6:
+   a separate panel appears below the HUD; press again to hide it. Holding the
+   key should not repeatedly toggle it. The panel must not intercept game clicks.
+2. Rebind **Open Events / Открыть эвенты** to the right of Open Options. Verify
+   the HUD label, opening/closing, persistence after restart and profile switches.
+   Assigning an occupied global hotkey or F9 should show the localized conflict
+   hint, not change the binding or exit the app.
+3. Compare the displayed remaining time against `/api/schedule`: boss and legion
+   count down to a start, Helltide to the end. At minute 55 Helltide shows Break;
+   at the next hour it returns to a 55-minute countdown. No dates/timezones/seconds
+   should appear. Changing only the OS timezone must not change the countdown.
+4. Leave the panel open across a five-minute refresh. A slow/offline connection
+   must not freeze the HUD or combat automation. Hide and reopen the panel;
+   this must not create another background worker or flood the endpoint.
+5. After a successful sync, disconnect and restart: cached timers remain, with a
+   cache label. After the supplied event list ends, predicted times are explicitly
+   labeled. Missing/corrupt/older-than-seven-day cache plus no network must show
+   No data/Cache expired, not a fabricated live schedule.
+6. Check both OS UI languages, including the longest offline/write-error strings.

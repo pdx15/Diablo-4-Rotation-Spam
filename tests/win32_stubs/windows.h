@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+using HRESULT = std::int32_t;
+constexpr bool FAILED(HRESULT result) { return result < 0; }
 using WORD = std::uint16_t;
 using UINT = unsigned int;
 using DWORD = std::uint32_t;
@@ -33,7 +35,8 @@ constexpr int MAX_PATH = 260;
 constexpr int VK_LBUTTON = 1, VK_RBUTTON = 2, VK_MBUTTON = 4;
 constexpr int VK_XBUTTON1 = 5, VK_XBUTTON2 = 6;
 constexpr int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12;
-constexpr int VK_F5 = 0x74, VK_F9 = 0x78;
+constexpr int VK_F1 = 0x70, VK_F5 = 0x74, VK_F6 = 0x75, VK_F7 = 0x76, VK_F8 = 0x77;
+constexpr int VK_F9 = 0x78, VK_F10 = 0x79, VK_F11 = 0x7a, VK_F12 = 0x7b;
 constexpr int XBUTTON1 = 1, XBUTTON2 = 2, MAPVK_VK_TO_VSC = 0;
 constexpr DWORD INPUT_MOUSE = 0, INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 2;
 constexpr DWORD MOUSEEVENTF_LEFTDOWN = 2, MOUSEEVENTF_LEFTUP = 4;
@@ -60,6 +63,7 @@ inline int maxTicks = 1;
 inline bool gameActive = true;
 inline bool healthy = false;
 inline bool keys[256] = {};
+inline std::function<void(int)> onKeyQuery;
 inline std::vector<INPUT> inputs;
 inline std::function<void(int)> beforeTick;
 inline std::string appData;
@@ -91,7 +95,10 @@ inline COLORREF GetPixel(HDC, int, int) {
 	return fake_win32::healthy ? RGB(0x9E, 0x30, 0x38) : RGB(0, 0, 0);
 }
 inline int ReleaseDC(HWND, HDC) { return 1; }
-inline short GetAsyncKeyState(int key) { return fake_win32::keys[key] ? -32768 : 0; }
+inline short GetAsyncKeyState(int key) {
+	if (fake_win32::onKeyQuery) fake_win32::onKeyQuery(key);
+	return fake_win32::keys[key] ? -32768 : 0;
+}
 inline int GetCursorPos(POINT*) { return 0; }
 inline HWND FindWindowW(const wchar_t*, const wchar_t*) { return nullptr; }
 inline int ScreenToClient(HWND, POINT*) { return 0; }

@@ -27,8 +27,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test release preparation
-        run: python3 -m unittest discover -s tests -p 'test_release.py' -v
+      - name: Test release preparation and localization
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Test macro behavior
         run: |
@@ -36,6 +36,16 @@ jobs:
           c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-missing-field-initializers \
             -pthread -Itests/win32_stubs tests/macro_regression.cpp -o out/macro_regression
           ./out/macro_regression
+
+      - name: Test event schedules, cache and background service
+        run: |
+          c++ -std=c++20 -Wall -Wextra -Wpedantic -pthread \
+            tests/event_schedule_test.cpp event_schedule.cpp -o out/event_schedule_test
+          ./out/event_schedule_test
+          c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
+            -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp \
+            -o out/event_service_test
+          ./out/event_service_test
 
   release:
     name: Build and publish Windows release
@@ -99,8 +109,8 @@ jobs:
               $exe.VersionInfo.ProductVersion -ne $env:RELEASE_VERSION) {
             throw "The executable version does not match $env:RELEASE_VERSION."
           }
-          # Only the executable is needed: translations and the icon are embedded.
-          Compress-Archive -LiteralPath $exe.FullName -DestinationPath "out/$env:RELEASE_ARCHIVE" `
+          # Translations/icon are embedded; ship the third-party license notice alongside the EXE.
+          Compress-Archive -LiteralPath @($exe.FullName, 'THIRD_PARTY_NOTICES.txt') -DestinationPath "out/$env:RELEASE_ARCHIVE" `
             -CompressionLevel Optimal
 
       - name: Publish release with the archive attached

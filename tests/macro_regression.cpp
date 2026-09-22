@@ -210,6 +210,71 @@ void testConfigCompatibility() {
 	std::cout << "PASS: missing/invalid option defaults off; v2/v3 and legacy migration\n";
 }
 
+void testEventsHotkey() {
+	ResetToDefaultConfig();
+	assert(eventsHotkey == VK_F6 && eventsKeyName == "F6");
+	BeginKeyCapture(CaptureEvents);
+	assert(isCapturing && keyToCaptureType == CaptureEvents && !hotkeyCaptureConflict);
+	assert(!AssignCapturedKey(CaptureEvents, settingsHotkey, "F5"));
+	assert(hotkeyCaptureConflict && eventsHotkey == VK_F6);
+	assert(!AssignCapturedKey(CaptureEvents, VK_F9, "F9"));
+	assert(AssignCapturedKey(CaptureEvents, VK_F8, "F8"));
+	assert(!hotkeyCaptureConflict && eventsHotkey == VK_F8 && eventsKeyName == "F8");
+	assert(!AssignCapturedKey(CaptureSettings, VK_F8, "F8"));
+	assert(!AssignCapturedKey(CaptureToggle, VK_F8, "F8"));
+	assert(AssignCapturedKey(CaptureSpamBase, 'Z', "Z"));
+	assert(spamKeys[0].vKey == 'Z' && eventsHotkey == VK_F8);
+	SaveConfig();
+	AddProfile();
+	SelectProfile(0);
+	assert(eventsHotkey == VK_F8); // global, not tied to a combat profile
+	ResetToDefaultConfig();
+	LoadConfig();
+	assert(eventsHotkey == VK_F8 && eventsKeyName == "F8");
+
+	writeConfig("version=3\nprofileCount=1\nsettingsHotkey=117\nsettingsKeyName=F6\n");
+	LoadConfig();
+	assert(settingsHotkey == VK_F6 && eventsHotkey == VK_F7 && eventsKeyName == "F7");
+	writeConfig("6 Mouse5 116 F5 1\n1 81 Q 50 960 1010\n1\n49 1 50 0 0 0\n");
+	LoadConfig();
+	assert(eventsHotkey == VK_F6 && eventsKeyName == "F6");
+
+	HotkeyEdge edge;
+	assert(!edge.Update(VK_F6, false, false));
+	assert(edge.Update(VK_F6, true, false));
+	assert(!edge.Update(VK_F6, true, false)); // held, no repeat
+	assert(!edge.Update(VK_F6, false, false));
+	assert(!edge.Update(VK_F6, true, true)); // capturing
+	assert(!edge.Update(VK_F6, true, false));
+	assert(!edge.Update(VK_F7, true, false)); // remapped while held
+	assert(!edge.Update(VK_F7, false, false));
+	assert(edge.Update(VK_F7, true, false));
+
+	isCapturing = false;
+	isCapturingCoordinates = false;
+	keyToCaptureType = CaptureNone;
+	ResetToDefaultConfig();
+	for (const auto& [pressed, expectedOpen] : std::vector<std::pair<std::vector<bool>, bool>>{
+		{{false, true, true, true}, true},
+		{{false, true, false, true}, false}}) {
+		resetInput();
+		isScriptActive = false;
+		showEventsWindow = false;
+		std::size_t poll = 0;
+		fake_win32::onKeyQuery = [&](int key) {
+			if (key == VK_F6) {
+				if (poll == pressed.size()) throw fake_win32::LoopComplete{};
+				fake_win32::keys[key] = pressed[poll++];
+			}
+		};
+		try { GlobalHotkeyMonitor(); } catch (const fake_win32::LoopComplete&) {}
+		fake_win32::onKeyQuery = {};
+		assert(showEventsWindow == expectedOpen);
+		assert(!isScriptActive);
+	}
+	std::cout << "PASS: events hotkey capture/conflicts, persistence, old configs, held-key debounce and toggle\n";
+}
+
 void testLanguages() {
 	fake_win32::resources[IDR_LANG_EN] = readFile("lang_en.txt");
 	fake_win32::resources[IDR_LANG_RU] = readFile("lang_ru.txt");
@@ -218,6 +283,10 @@ void testLanguages() {
 	fake_win32::language = LANG_RUSSIAN;
 	LoadLanguage();
 	assert(lang.chkGlobalHealthIndependent == "Независимая работа");
+	assert(lang.events == "Эвенты:" && lang.btnEvents == "Открыть эвенты:");
+	assert(lang.eventWorldBoss == "Мировой босс" && lang.eventLegion == "Легион");
+	assert(lang.eventHelltide == "Адский натиск" && lang.eventsBreak == "Перерыв");
+	assert(lang.eventsHours == "ч" && lang.eventsMinutes == "мин");
 	fake_win32::language = 9;
 	LoadLanguage();
 	assert(lang.chkGlobalHealthIndependent == "Independent operation");
@@ -240,6 +309,7 @@ int main() {
 	testFastLootUnchanged();
 	testProfilesAndPersistence();
 	testConfigCompatibility();
+	testEventsHotkey();
 	testLanguages();
 	std::filesystem::remove_all(temp);
 	std::cout << "All isolated macro regression tests passed.\n";

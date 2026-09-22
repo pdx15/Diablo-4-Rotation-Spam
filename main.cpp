@@ -1,3 +1,6 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <d3d11.h>
 #include <windows.h>
 
@@ -12,6 +15,7 @@
 #include <vector>
 
 #include "app_state.h"
+#include "event_service.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_dx11.h"
 #include "imgui/imgui_impl_win32.h"
@@ -23,6 +27,8 @@ extern LocStrings lang;
 extern std::atomic<bool> isScriptActive;
 extern std::atomic<bool> isHealthy;
 extern bool showSettingsWindow;
+extern bool showEventsWindow;
+extern bool hotkeyCaptureConflict;
 extern bool isCapturing;
 extern bool isCapturingCoordinates;
 extern std::recursive_mutex settingsMutex;
@@ -42,15 +48,18 @@ extern std::string fastLootClickKeyName;
 extern int fastLootDelayMs;
 extern std::string toggleKeyName;
 extern std::string settingsKeyName;
-extern int keyToCaptureType;
+extern std::string eventsKeyName;
+extern void BeginKeyCapture(int type);
 extern std::vector<ProfileConfig> profiles;
 extern int activeProfileIndex;
 extern bool autoUpdateEnabled;
 
 namespace {
-	constexpr int kOverlayWidth = 1200;
+	constexpr int kOverlayWidth = 1280;
 	constexpr int kOverlayHeight = 760;
-	constexpr float kSettingsWindowInitialX = 245.0f;
+	constexpr float kStatusWindowWidth = 340.0f;
+	constexpr float kStatusWindowHeight = 114.0f;
+	constexpr float kSettingsWindowInitialX = kStatusWindowWidth + 15.0f;
 	constexpr float kSettingsWindowInitialY = 0.0f;
 	constexpr float kSettingsWindowDefaultWidth = 560.0f;
 	constexpr float kSettingsWindowDefaultHeight = 520.0f;
@@ -82,6 +91,56 @@ IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
 namespace {
+	void DrawEventsWindow(const events::View& view) {
+		ImGui::SetNextWindowPos(ImVec2(0, kStatusWindowHeight + 6.0f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(kStatusWindowWidth, 0), ImGuiCond_Always);
+		if (ImGui::Begin("EventsPanel", nullptr,
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize |
+			ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoInputs)) {
+			ImGui::TextUnformatted(lang.eventsWindowTitle.c_str());
+			ImGui::Separator();
+			if (ImGui::BeginTable("##eventTimers", 2, ImGuiTableFlags_SizingFixedFit)) {
+				auto row = [](const std::string& label, const events::Countdown& timer) {
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					ImGui::TextUnformatted(label.c_str());
+					ImGui::TableSetColumnIndex(1);
+					std::string value;
+					ImVec4 color(0.6f, 0.6f, 0.6f, 1.0f);
+					if (timer.phase == events::Phase::Unknown) value = lang.eventsNoData;
+					else if (timer.phase == events::Phase::Break) value = lang.eventsBreak;
+					else {
+						bool ending = timer.phase == events::Phase::EndsIn;
+						value = (ending ? lang.eventsEndsIn : lang.eventsStartsIn) + " " +
+							events::FormatDuration(timer.seconds, lang.eventsHours, lang.eventsMinutes);
+						color = ending ? ImVec4(1.0f, 0.85f, 0.3f, 1.0f)
+							: ImVec4(0.0f, 0.8f, 1.0f, 1.0f);
+					}
+					ImGui::TextColored(color, "%s", value.c_str());
+				};
+				row(lang.eventWorldBoss, view.timers.worldBoss);
+				row(lang.eventLegion, view.timers.legion);
+				row(lang.eventHelltide, view.timers.helltide);
+				ImGui::EndTable();
+			}
+			ImGui::Separator();
+			const std::string* status = &lang.eventsSynced;
+			if (view.timers.expired) status = &lang.eventsExpired;
+			else if (view.sync == events::SyncState::Loading) status = &lang.eventsLoading;
+			else if (view.timers.worldBoss.phase == events::Phase::Unknown)
+				status = &lang.eventsUnavailable;
+			else if (view.timers.Estimated()) status = &lang.eventsEstimated;
+			else if (view.sync == events::SyncState::Offline) status = &lang.eventsCached;
+			ImGui::PushTextWrapPos(0.0f);
+			ImGui::TextDisabled("Helltides.com | %s", status->c_str());
+			ImGui::PopTextWrapPos();
+			if (view.cacheWriteFailed) ImGui::TextWrapped("%s", lang.eventsCacheWriteFailed.c_str());
+		}
+		ImGui::End();
+	}
+
 	// The updater relaunches us as: <exe> --updated-from <pid of old process>.
 	// We must wait for that process to die before touching its leftovers,
 	// otherwise the .bak file stays locked and the cleanup silently fails.
@@ -145,6 +204,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ImGui_ImplWin32_Init(hwnd);
 	ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
+	events::Service eventService;
+	bool settingsLayoutAdjusted = false;
 	bool done = false;
 	while (!done) {
 		MSG msg;
@@ -180,7 +241,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			std::lock_guard<std::recursive_mutex> lock(settingsMutex);
 
 			ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-			ImGui::SetNextWindowSize(ImVec2(230, 114), ImGuiCond_Always);
+			ImGui::SetNextWindowSize(ImVec2(kStatusWindowWidth, kStatusWindowHeight), ImGuiCond_Always);
 			ImGui::Begin("StatusPanel", nullptr,
 				ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
 				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
@@ -215,16 +276,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				activeProfileIndex < static_cast<int>(profiles.size())) {
 				ImGui::Text(lang.profile.c_str());
 				ImGui::SameLine();
-				ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f),
+				ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "%s",
 					profiles[activeProfileIndex].name.c_str());
 			}
 
-			ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
-				(lang.options + "[" + settingsKeyName + "]").c_str());
+			ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "%s[%s]",
+				lang.options.c_str(), settingsKeyName.c_str());
+			ImGui::SameLine();
+			ImGui::TextColored(showEventsWindow ? ImVec4(0.0f, 0.8f, 1.0f, 1.0f)
+				: ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "%s [%s]",
+				lang.events.c_str(), eventsKeyName.c_str());
 			ImGui::End();
 
+			if (showEventsWindow) {
+				eventService.Start();
+				DrawEventsWindow(eventService.GetView());
+			}
+
 			if (isCapturingCoordinates) {
-				ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always);
+				ImGui::SetNextWindowPos(ImVec2(kSettingsWindowInitialX, 0), ImGuiCond_Always);
 				ImGui::SetNextWindowSize(ImVec2(500, 100), ImGuiCond_Always);
 				ImGui::Begin("Capture Coords", nullptr,
 					ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -235,14 +305,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				ImGui::End();
 			}
 			else if (isCapturing) {
-				ImGui::SetNextWindowPos(ImVec2(245, 0), ImGuiCond_Always);
+				ImGui::SetNextWindowPos(ImVec2(kSettingsWindowInitialX, 0), ImGuiCond_Always);
 				ImGui::SetNextWindowSize(ImVec2(500, 100), ImGuiCond_Always);
 				ImGui::Begin("Capture Key", nullptr,
 					ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
 					ImGuiWindowFlags_NoMove);
 				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
 					lang.captureKeyTitle.c_str());
-				ImGui::Text(lang.captureKeyDesc.c_str());
+				ImGui::TextUnformatted(lang.captureKeyDesc.c_str());
+				if (hotkeyCaptureConflict) {
+					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s",
+						lang.captureHotkeyConflict.c_str());
+				}
 				ImGui::End();
 			}
 			else if (showSettingsWindow) {
@@ -259,6 +333,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 					lang.settingsWindowTitle + "###SettingsPanel";
 				ImGui::Begin(settingsWindowTitle.c_str(), &showSettingsWindow,
 					ImGuiWindowFlags_NoCollapse);
+				if (!settingsLayoutAdjusted) {
+					// Migrate the old default position so it cannot cover the wider HUD.
+					const auto position = ImGui::GetWindowPos();
+					if (position.x == 245.0f && position.y == 0.0f)
+						ImGui::SetWindowPos(ImVec2(kSettingsWindowInitialX, 0));
+					settingsLayoutAdjusted = true;
+				}
 
 				ImGui::Text(lang.settingsTitle.c_str());
 				if (!profiles.empty()) {
@@ -405,14 +486,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				ImGui::Separator();
 				if (ImGui::Button(
 					(lang.btnToggle + "[" + toggleKeyName + "]").c_str())) {
-					isCapturing = true;
-					keyToCaptureType = 0;
+					BeginKeyCapture(CaptureToggle);
+				}
+				if (ImGui::Button(
+					(lang.btnSettings + "[" + settingsKeyName + "]").c_str())) {
+					BeginKeyCapture(CaptureSettings);
 				}
 				ImGui::SameLine();
 				if (ImGui::Button(
-					(lang.btnSettings + "[" + settingsKeyName + "]").c_str())) {
-					isCapturing = true;
-					keyToCaptureType = 1;
+					(lang.btnEvents + " [" + eventsKeyName + "]").c_str())) {
+					BeginKeyCapture(CaptureEvents);
 				}
 
 				ImGui::Separator();
@@ -437,8 +520,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 					}
 					if (ImGui::Button(
 						(lang.lblHealthKey + "[" + healthKeyName + "]").c_str())) {
-						isCapturing = true;
-						keyToCaptureType = 2;
+						BeginKeyCapture(CaptureHealth);
 					}
 					ImGui::SameLine();
 					ImGui::PushItemWidth(100);
@@ -459,15 +541,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				if (ImGui::Button(
 					(lang.lblFastLootHoldKey + "[" + fastLootHoldKeyName + "]")
 					.c_str())) {
-					isCapturing = true;
-					keyToCaptureType = 3;
+					BeginKeyCapture(CaptureLootHold);
 				}
 				ImGui::SameLine();
 				if (ImGui::Button(
 					(lang.lblFastLootClickKey + "[" + fastLootClickKeyName + "]")
 					.c_str())) {
-					isCapturing = true;
-					keyToCaptureType = 4;
+					BeginKeyCapture(CaptureLootClick);
 				}
 				ImGui::SameLine();
 				ImGui::PushItemWidth(100);
@@ -484,8 +564,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 					ImGui::PushID(static_cast<int>(i));
 					if (ImGui::Button(("[" + spamKeys[i].keyName + "]##btn").c_str(),
 						ImVec2(65, 0))) {
-						isCapturing = true;
-						keyToCaptureType = static_cast<int>(5 + i);
+						BeginKeyCapture(CaptureSpamBase + static_cast<int>(i));
 					}
 					ImGui::SameLine();
 					ImGui::PushItemWidth(65);

@@ -38,6 +38,8 @@ std::string GetConfigPath() {
 std::atomic<bool> isScriptActive(false);
 std::atomic<bool> isHealthy(true);
 bool showSettingsWindow = false;
+bool showEventsWindow = false;
+bool hotkeyCaptureConflict = false;
 bool isCapturing = false;
 bool isCapturingCoordinates = false;
 std::recursive_mutex settingsMutex;
@@ -66,7 +68,9 @@ int toggleHotkey = VK_XBUTTON2;
 std::string toggleKeyName = "Mouse5";
 int settingsHotkey = VK_F5;
 std::string settingsKeyName = "F5";
-int keyToCaptureType = -1;
+int eventsHotkey = VK_F6;
+std::string eventsKeyName = "F6";
+int keyToCaptureType = CaptureNone;
 
 struct MacroSettingsSnapshot {
 	int combatMouseTrigger = 1;
@@ -383,12 +387,27 @@ void StoreGlobalsInActiveProfile() {
 		MakeProfileFromGlobals(profiles[activeProfileIndex].name);
 }
 
+void EnsureEventsHotkeyAvailable() {
+	if (eventsHotkey != toggleHotkey && eventsHotkey != settingsHotkey && eventsHotkey != VK_F9)
+		return;
+	// Older configs may already use F6. Keep existing bindings, choose a free event key.
+	for (int key : {VK_F6, VK_F7, VK_F8, VK_F10, VK_F11, VK_F12}) {
+		if (key != toggleHotkey && key != settingsHotkey) {
+			eventsHotkey = key;
+			eventsKeyName = "F" + std::to_string(key - VK_F1 + 1);
+			return;
+		}
+	}
+}
+
 void ResetToDefaultConfig() {
 	autoUpdateEnabled = false;
 	toggleHotkey = VK_XBUTTON2;
 	toggleKeyName = "Mouse5";
 	settingsHotkey = VK_F5;
 	settingsKeyName = "F5";
+	eventsHotkey = VK_F6;
+	eventsKeyName = "F6";
 	combatMouseTrigger = 1;
 	globalHealthCheckEnable = true;
 	globalHealthIndependent = false;
@@ -427,6 +446,8 @@ void SaveConfig() {
 	out << "toggleKeyName=" << toggleKeyName << "\n";
 	out << "settingsHotkey=" << settingsHotkey << "\n";
 	out << "settingsKeyName=" << settingsKeyName << "\n";
+	out << "eventsHotkey=" << eventsHotkey << "\n";
+	out << "eventsKeyName=" << eventsKeyName << "\n";
 	out << "profileCount=" << profiles.size() << "\n";
 
 	for (size_t i = 0; i < profiles.size(); ++i) {
@@ -496,6 +517,9 @@ bool LoadLegacyConfig() {
 		}
 	}
 
+	eventsHotkey = VK_F6;
+	eventsKeyName = "F6";
+	EnsureEventsHotkeyAvailable();
 	// Legacy configs have no independent auto-heal setting.
 	globalHealthIndependent = false;
 	if (spamKeys.empty()) spamKeys = MakeDefaultSpamKeys();
@@ -517,6 +541,9 @@ bool LoadModernConfig() {
 	toggleKeyName = ReadString(values, "toggleKeyName", "Mouse5");
 	settingsHotkey = ReadInt(values, "settingsHotkey", VK_F5, 1, 255);
 	settingsKeyName = ReadString(values, "settingsKeyName", "F5");
+	eventsHotkey = ReadInt(values, "eventsHotkey", VK_F6, 1, 255);
+	eventsKeyName = ReadString(values, "eventsKeyName", "F6");
+	EnsureEventsHotkeyAvailable();
 	autoUpdateEnabled = ReadBool(values, "autoUpdateEnabled", false);
 
 	int profileCount = ReadInt(values, "profileCount", 1, 1, 16);
@@ -732,13 +759,45 @@ void CoreMacroLoop() {
 	}
 }
 
+void BeginKeyCapture(int type) {
+	std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+	keyToCaptureType = type;
+	hotkeyCaptureConflict = false;
+	isCapturing = true;
+}
+
+bool AssignCapturedKey(int type, int vk, const std::string& name) {
+	std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+	bool global = type == CaptureToggle || type == CaptureSettings || type == CaptureEvents;
+	hotkeyCaptureConflict = global && (vk == VK_F9 ||
+		(type != CaptureToggle && vk == toggleHotkey) ||
+		(type != CaptureSettings && vk == settingsHotkey) ||
+		(type != CaptureEvents && vk == eventsHotkey));
+	if (hotkeyCaptureConflict) return false;
+	if (type == CaptureToggle) { toggleHotkey = vk; toggleKeyName = name; }
+	else if (type == CaptureSettings) { settingsHotkey = vk; settingsKeyName = name; }
+	else if (type == CaptureEvents) { eventsHotkey = vk; eventsKeyName = name; }
+	else if (type == CaptureHealth) { healthVKey = vk; healthKeyName = name; }
+	else if (type == CaptureLootHold) { fastLootHoldVKey = vk; fastLootHoldKeyName = name; }
+	else if (type == CaptureLootClick) { fastLootClickVKey = vk; fastLootClickKeyName = name; }
+	else if (type >= CaptureSpamBase && static_cast<size_t>(type - CaptureSpamBase) < spamKeys.size()) {
+		auto& key = spamKeys[type - CaptureSpamBase];
+		key.vKey = vk;
+		key.keyName = name;
+	}
+	else return false;
+	return true;
+}
+
 void GlobalHotkeyMonitor() {
+	HotkeyEdge eventsKeyEdge;
 	while (true) {
 		bool capturingCoordinates = false;
 		bool capturingKey = false;
 		int captureType = -1;
 		int currentToggleHotkey = VK_XBUTTON2;
 		int currentSettingsHotkey = VK_F5;
+		int currentEventsHotkey = VK_F6;
 
 		{
 			std::lock_guard<std::recursive_mutex> lock(settingsMutex);
@@ -747,7 +806,12 @@ void GlobalHotkeyMonitor() {
 			captureType = keyToCaptureType;
 			currentToggleHotkey = toggleHotkey;
 			currentSettingsHotkey = settingsHotkey;
+			currentEventsHotkey = eventsHotkey;
 		}
+
+		bool openEvents = eventsKeyEdge.Update(currentEventsHotkey,
+			(GetAsyncKeyState(currentEventsHotkey) & 0x8000) != 0,
+			capturingCoordinates || capturingKey);
 
 		if (capturingCoordinates) {
 			if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
@@ -769,7 +833,7 @@ void GlobalHotkeyMonitor() {
 			}
 		}
 		else if (capturingKey) {
-			bool allowMouseButtons = (keyToCaptureType == 3 || keyToCaptureType == 4);
+			bool allowMouseButtons = (captureType == CaptureLootHold || captureType == CaptureLootClick);
 
 			for (int vk = 1; vk < 256; vk++) {
 				if (!allowMouseButtons && (vk == VK_LBUTTON || vk == VK_RBUTTON))
@@ -780,35 +844,9 @@ void GlobalHotkeyMonitor() {
 					{
 						std::lock_guard<std::recursive_mutex> lock(settingsMutex);
 						captureType = keyToCaptureType;
-						if (captureType == 0) {
-							toggleHotkey = vk;
-							toggleKeyName = name;
-						}
-						else if (captureType == 1) {
-							settingsHotkey = vk;
-							settingsKeyName = name;
-						}
-						else if (captureType == 2) {
-							healthVKey = vk;
-							healthKeyName = name;
-						}
-						else if (captureType == 3) {
-							fastLootHoldVKey = vk;
-							fastLootHoldKeyName = name;
-						}
-						else if (captureType == 4) {
-							fastLootClickVKey = vk;
-							fastLootClickKeyName = name;
-						}
-						else if (captureType >= 5) {
-							size_t idx = captureType - 5;
-							if (idx < spamKeys.size()) {
-								spamKeys[idx].vKey = vk;
-								spamKeys[idx].keyName = name;
-							}
-						}
+						if (!AssignCapturedKey(captureType, vk, name)) break;
 						isCapturing = false;
-						keyToCaptureType = -1;
+						keyToCaptureType = CaptureNone;
 						SaveConfig();
 					}
 					Beep(600, 100);
@@ -818,6 +856,11 @@ void GlobalHotkeyMonitor() {
 			}
 		}
 		else {
+			if (openEvents) {
+				std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+				if (!isCapturing && !isCapturingCoordinates && eventsHotkey == currentEventsHotkey)
+					showEventsWindow = !showEventsWindow;
+			}
 			if (GetAsyncKeyState(currentToggleHotkey) & 0x8000) {
 				isScriptActive = !isScriptActive;
 				Beep(isScriptActive ? 440 : 220, 150);
@@ -893,6 +936,46 @@ void LoadLanguage() {
 			lang.healthStatus = val;
 		else if (key == "options")
 			lang.options = val;
+		else if (key == "events")
+			lang.events = val;
+		else if (key == "btnEvents")
+			lang.btnEvents = val;
+		else if (key == "eventsWindowTitle")
+			lang.eventsWindowTitle = val;
+		else if (key == "eventWorldBoss")
+			lang.eventWorldBoss = val;
+		else if (key == "eventLegion")
+			lang.eventLegion = val;
+		else if (key == "eventHelltide")
+			lang.eventHelltide = val;
+		else if (key == "eventsStartsIn")
+			lang.eventsStartsIn = val;
+		else if (key == "eventsEndsIn")
+			lang.eventsEndsIn = val;
+		else if (key == "eventsBreak")
+			lang.eventsBreak = val;
+		else if (key == "eventsNoData")
+			lang.eventsNoData = val;
+		else if (key == "eventsLoading")
+			lang.eventsLoading = val;
+		else if (key == "eventsSynced")
+			lang.eventsSynced = val;
+		else if (key == "eventsCached")
+			lang.eventsCached = val;
+		else if (key == "eventsEstimated")
+			lang.eventsEstimated = val;
+		else if (key == "eventsExpired")
+			lang.eventsExpired = val;
+		else if (key == "eventsUnavailable")
+			lang.eventsUnavailable = val;
+		else if (key == "eventsCacheWriteFailed")
+			lang.eventsCacheWriteFailed = val;
+		else if (key == "eventsHours")
+			lang.eventsHours = val;
+		else if (key == "eventsMinutes")
+			lang.eventsMinutes = val;
+		else if (key == "captureHotkeyConflict")
+			lang.captureHotkeyConflict = val;
 		else if (key == "healthy")
 			lang.healthy = val;
 		else if (key == "lowHp")
