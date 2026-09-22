@@ -59,6 +59,9 @@ inline int WinHttpSetTimeouts(HINTERNET, int resolve, int connect, int send, int
 	assert(receive <= 10000);
 	return 1;
 }
+inline int WinHttpSetOption(HINTERNET, DWORD, void*, DWORD) {
+	return 1;
+}
 inline HINTERNET WinHttpConnect(HINTERNET, const wchar_t* host, unsigned short port, DWORD) {
 	assert(std::wstring(host) == L"helltides.com" && port == 443);
 	return fake_winhttp::NewHandle();
