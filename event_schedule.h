@@ -16,6 +16,9 @@ inline constexpr UnixSeconds kHelltidePeriod = 60 * 60;
 inline constexpr UnixSeconds kHelltideDuration = 55 * 60;
 inline constexpr UnixSeconds kMaxCacheAge = 7 * 24 * 60 * 60;
 inline constexpr int kRefreshSeconds = 5 * 60;
+// A failed refresh is retried sooner so a transient outage or a list that the
+// site has not published yet delays the timers by a minute, not five.
+inline constexpr int kRetrySeconds = 60;
 
 struct Schedule {
 	UnixSeconds fetchedAt = 0;

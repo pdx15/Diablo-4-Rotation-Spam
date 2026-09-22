@@ -40,14 +40,16 @@ or the reserved exit key F9 is rejected with a localized hint.
 * Only hours and minutes are shown, rounded up; calculations use Unix seconds,
   with no local-time conversion. Events work even while combat automation is OFF.
 * After the first opening, a background worker requests
-  `https://helltides.com/api/schedule` immediately and every five minutes, including
-  while the panel is hidden. UI rendering and combat automation never wait for HTTP.
+  `https://helltides.com/api/schedule` immediately, then every five minutes
+  (a minute after a failed attempt), including while the panel is hidden.
+  UI rendering and combat automation never wait for HTTP.
 * Valid schedules are atomically cached at `%APPDATA%\d4rt\events_cache.json`
   and restored on the next launch/opening. Network errors or invalid responses
-  never overwrite the last good cache. Cached data and predictions are labeled;
-  after the supplied list ends, predictions use the last known phase and the
-  210/25/60-minute cycles. Cache older than seven days is shown as expired, not live.
-  With neither valid cache nor network data, the panel displays **No data**.
+  never overwrite the last good cache. When the published list has run out —
+  for example late at night, before the next daily list appears — countdowns
+  continue as predictions using the 210/25/60-minute cycles. Cache older than
+  seven days is shown as expired, not live. With neither valid cache nor
+  network data, the panel displays **No data**.
 * English/Russian labels include loading, offline, expired-cache and write-error
   states. `Helltides.com` is a third-party source; timings may change after patches.
 

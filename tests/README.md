@@ -50,7 +50,8 @@ c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
 ```
 
 The schedule tests exercise the real parser/calculator/cache with fixed Unix
-seconds: structured/nested JSON, sorting, deduplication, stale/malformed/oversized
+seconds: structured/nested JSON, sorting, deduplication, exhausted daily lists
+that still feed predictions, malformed/oversized
 responses, boss/legion phase rollover across midnight, Helltide's 55/60-minute
 boundaries, localized durations, predictions, seven-day expiry and atomic disk
 cache replacement. No current timezone or live endpoint is needed.
