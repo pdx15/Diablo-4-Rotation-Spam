@@ -15,10 +15,10 @@
 #include <vector>
 
 #include "app_state.h"
-#include "event_service.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_dx11.h"
-#include "imgui/imgui_impl_win32.h"
+#include "event_schedule.h"
+#include "third_party/imgui/imgui.h"
+#include "third_party/imgui/imgui_impl_dx11.h"
+#include "third_party/imgui/imgui_impl_win32.h"
 #include "overlay_utils.h"
 #include "updater.h"
 #include "version.h"
@@ -102,7 +102,7 @@ namespace {
 		return flags;
 	}
 
-	void DrawEventsWindow(const events::View& view, bool inputActive,
+	void DrawEventsWindow(const events::Timers& timers, bool inputActive,
 		const ImVec2& statusPos, const ImVec2& statusSize,
 		const ImVec2& overlayMax) {
 		ImGui::SetNextWindowPos(
@@ -117,31 +117,29 @@ namespace {
 			ImGui::TextUnformatted(lang.eventsWindowTitle.c_str());
 			ImGui::Separator();
 			if (ImGui::BeginTable("##eventTimers", 2, ImGuiTableFlags_SizingFixedFit)) {
-				auto row = [](const std::string& label, const events::Countdown& timer) {
-					ImGui::TableNextRow();
-					ImGui::TableSetColumnIndex(0);
-					ImGui::TextUnformatted(label.c_str());
-					ImGui::TableSetColumnIndex(1);
-					std::string value;
-					ImVec4 color(0.6f, 0.6f, 0.6f, 1.0f);
-					if (timer.phase == events::Phase::Unknown) value = lang.eventsNoData;
-					else if (timer.phase == events::Phase::Break) value = lang.eventsBreak;
-					else {
-						bool ending = timer.phase == events::Phase::EndsIn;
-						value = (ending ? lang.eventsEndsIn : lang.eventsStartsIn) + " " +
-							events::FormatDuration(timer.seconds, lang.eventsHours, lang.eventsMinutes);
-						color = ending ? ImVec4(1.0f, 0.85f, 0.3f, 1.0f)
-							: ImVec4(0.0f, 0.8f, 1.0f, 1.0f);
-					}
-					ImGui::TextColored(color, "%s", value.c_str());
-				};
-				row(lang.eventWorldBoss, view.timers.worldBoss);
-				row(lang.eventLegion, view.timers.legion);
-				row(lang.eventHelltide, view.timers.helltide);
-				ImGui::EndTable();
-			}
-			if (view.cacheWriteFailed) ImGui::TextWrapped("%s", lang.eventsCacheWriteFailed.c_str());
+			auto row = [](const std::string& label, const events::Countdown& timer) {
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::TextUnformatted(label.c_str());
+				ImGui::TableSetColumnIndex(1);
+				std::string value;
+				ImVec4 color(0.6f, 0.6f, 0.6f, 1.0f);
+				if (timer.phase == events::Phase::Break) value = lang.eventsBreak;
+				else {
+					bool ending = timer.phase == events::Phase::EndsIn;
+					value = (ending ? lang.eventsEndsIn : lang.eventsStartsIn) + " " +
+						events::FormatDuration(timer.seconds, lang.eventsHours, lang.eventsMinutes);
+					color = ending ? ImVec4(1.0f, 0.85f, 0.3f, 1.0f)
+						: ImVec4(0.0f, 0.8f, 1.0f, 1.0f);
+				}
+				ImGui::TextColored(color, "%s", value.c_str());
+			};
+			row(lang.eventWorldBoss, timers.worldBoss);
+			row(lang.eventLegion, timers.legion);
+			row(lang.eventHelltide, timers.helltide);
+			ImGui::EndTable();
 		}
+	}
 		ImGui::End();
 	}
 
@@ -244,8 +242,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	ImGui_ImplWin32_Init(hwnd);
 	ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
-
-	events::Service eventService;
 	bool settingsLayoutAdjusted = false;
 	ImVec2 statusWindowPos(0.0f, 0.0f);
 	ImVec2 statusWindowSize(kStatusWindowDefaultWidth, kStatusWindowDefaultHeight);
@@ -340,11 +336,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 				lang.events.c_str(), eventsKeyName.c_str());
 			ImGui::End();
 
-			if (showEventsWindow) {
-				eventService.Start();
-				DrawEventsWindow(eventService.GetView(), overlayNeedsInput,
-					statusWindowPos, statusWindowSize, overlayMax);
-			}
+		if (showEventsWindow) {
+			DrawEventsWindow(events::CalculateTimers(events::Now()), overlayNeedsInput,
+				statusWindowPos, statusWindowSize, overlayMax);
+		}
 
 			if (isCapturingCoordinates) {
 				ImGui::SetNextWindowPos(ImVec2(kSettingsWindowInitialX, 0), ImGuiCond_Always);

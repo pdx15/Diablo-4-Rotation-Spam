@@ -1,7 +1,7 @@
-﻿// Microsoft Visual C++ generated resource script.
+// Microsoft Visual C++ generated resource script.
 //
-#include "resource.h"
-#include "version.h"
+#include "src\resource.h"
+#include "src\version.h"
 #pragma code_page(65001)
 
 #define APSTUDIO_READONLY_SYMBOLS
@@ -27,7 +27,7 @@ LANGUAGE LANG_RUSSIAN,
     // TEXTINCLUDE
     //
 
-    1 TEXTINCLUDE BEGIN "resource.h\0" END
+    1 TEXTINCLUDE BEGIN "src\\resource.h\0" END
 
     2 TEXTINCLUDE BEGIN
     "#include "
@@ -48,14 +48,14 @@ LANGUAGE LANG_RUSSIAN,
 
         // Icon with lowest ID value placed first to ensure application icon
         // remains consistent on all systems.
-        IDI_ICON1 ICON "y.ico"
+        IDI_ICON1 ICON "src\y.ico"
 
     /////////////////////////////////////////////////////////////////////////////
     //
     // Embedded language files
     //
-
-    IDR_LANG_EN RCDATA "lang_en.txt" IDR_LANG_RU RCDATA "lang_ru.txt"
+    
+    IDR_LANG_EN RCDATA "src\lang_en.txt" IDR_LANG_RU RCDATA "src\lang_ru.txt"
 
     /////////////////////////////////////////////////////////////////////////////
     //

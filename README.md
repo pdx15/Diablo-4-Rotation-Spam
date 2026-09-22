@@ -37,32 +37,11 @@ or the reserved exit key F9 is rejected with a localized hint.
 * **World Boss** and **Legion:** countdown to the next start.
 * **Helltide:** countdown to the end of its 55-minute active phase; displays
   **Break** during the remaining five minutes of the hour.
-* Only hours and minutes are shown, rounded up; calculations use Unix seconds,
-  with no local-time conversion. Events work even while combat automation is OFF.
-* After the first opening, a background worker requests
-  `https://helltides.com/api/schedule` immediately, then every five minutes
-  (a minute after a failed attempt), including while the panel is hidden.
-  UI rendering and combat automation never wait for HTTP.
-* Valid schedules are atomically cached at `%APPDATA%\d4rt\events_cache.json`
-  and restored on the next launch/opening. Network errors or invalid responses
-  never overwrite the last good cache. When the published list has run out —
-  for example late at night, before the next daily list appears — countdowns
-  continue as predictions using the 210/25/60-minute cycles. Cache older than
-  seven days is shown as expired, not live. With neither valid cache nor
-  network data the panel falls back to a deterministic local clock — Helltide
-  on the hour, World Boss every 210 minutes and Legion every 25 minutes — so a
-  Cloudflare block or any publisher outage never leaves it showing **No data**.
-  A successful fetch re-derives the local clock's phase from the publisher's
-  lists and stores it in the cache (schema 2), keeping the fallback in sync
-  with the real schedule after patches change it; the locally computed
-  schedule itself is never written to disk.
-* Every refresh is logged to `%APPDATA%\\d4rt\\event_log.txt`: one timestamped
-  line per attempt with the fetch outcome (HTTP status or the failed WinHTTP
-  stage with its Win32 code), the parse result, the cache outcome and the
-  state. The log is capped at 256 KB with older lines discarded first; if the
-  panel shows **No data**, attach this file when reporting the issue.
-* English/Russian labels include loading, offline, expired-cache and write-error
-  states. `Helltides.com` is a third-party source; timings may change after patches.
+* Timers are computed locally from the game's fixed schedule (hourly Helltide,
+  3.5-hour World Boss and 25-minute Legion cycles) — no network, no cache
+  files. Only hours and minutes are shown, rounded up, with no local-time
+  conversion; events work even while combat automation is OFF. If a patch
+  changes the schedule, update the anchors in `src/event_schedule.h`.
 
 ### Publishing a release
 Maintainers can run **Actions → Release → Run workflow**, select the source branch, and enter a new version, for example `1.0.5.2`. The workflow must first be present on the repository's default branch to appear in the Actions UI.
@@ -112,32 +91,11 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
 * **Мировой босс** и **Легион:** отсчёт до следующего начала.
 * **Адский натиск:** отсчёт до конца 55-минутной активной фазы, затем **Перерыв**
   в течение оставшихся пяти минут часа.
-* Выводятся только часы и минуты с округлением вверх. Расчёт идёт по Unix-времени,
-  без пересчёта часового пояса. Эвенты работают и при выключенном боевом скрипте.
-* После первого открытия отдельный поток сразу получает расписание с
-  `https://helltides.com/api/schedule` и обновляет его каждые пять минут, даже
-  когда панель скрыта. HTTP не блокирует интерфейс или боевую автоматизацию.
-* Корректное расписание атомарно сохраняется в `%APPDATA%\d4rt\events_cache.json`
-  и восстанавливается при следующем запуске/открытии. Ошибки связи и некорректные
-  ответы не затирают последний рабочий кэш. Использование кэша и прогнозов помечено;
-  после окончания списка отсчёт продолжается от последней известной точки по
-  циклам 210/25/60 минут. Кэш старше семи дней считается устаревшим.
-  При отсутствии и сети, и корректного кэша панель переключается на
-  детерминированный локальный расчёт — Адский натиск каждый час,
-  Мировой босс каждые 210 минут, Легион каждые 25 минут — поэтому блокировки
-  Cloudflare или сбои источника не оставляют её без данных. Удачная загрузка
-  пересчитывает фазу локального расчёта по спискам сайта и сохраняет её в кэше
-  (схема 2), чтобы после патчей фолбэк совпадал с реальным расписанием;
-  сами локальные расписания на диск не записываются.
-* Каждая попытка обновления записывается в `%APPDATA%\\d4rt\\event_log.txt`:
-  одна строка с отметкой времени на попытку — результат получения
-  (HTTP-статус или отказавшая стадия WinHTTP с кодом Win32), результат
-  разбора, исход записи кэша и состояние. Размер журнала ограничен 256 КБ,
-  старые строки удаляются первыми; если панель показывает **Нет данных**,
-  приложите этот файл к сообщению о проблеме.
-* Подписи и сообщения о загрузке, отсутствии связи, устаревшем кэше и ошибке записи
-  переведены на русский и английский. Helltides.com — сторонний источник;
-  после обновлений игры расписание может меняться.
+* Отсчёт считается локально по фиксированному расписанию игры (Адский натиск
+  каждый час, Мировой босс каждые 3,5 часа, Легион каждые 25 минут) — без сети
+  и кэш-файлов. Выводятся только часы и минуты с округлением вверх, без
+  пересчёта часового пояса; эвенты работают и при выключенном боевом скрипте.
+  Если патч изменит расписание — обновите якоря в `src/event_schedule.h`.
 
 ### Публикация релиза
 Для сопровождающих: откройте **Actions → Release → Run workflow**, выберите ветку с исходниками и введите новую версию, например `1.0.5.2`. Чтобы workflow появился в интерфейсе Actions, его файл сначала должен попасть в основную ветку репозитория.

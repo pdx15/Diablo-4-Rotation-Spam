@@ -954,10 +954,6 @@ void LoadLanguage() {
 			lang.eventsEndsIn = val;
 		else if (key == "eventsBreak")
 			lang.eventsBreak = val;
-		else if (key == "eventsNoData")
-			lang.eventsNoData = val;
-		else if (key == "eventsCacheWriteFailed")
-			lang.eventsCacheWriteFailed = val;
 		else if (key == "eventsHours")
 			lang.eventsHours = val;
 		else if (key == "eventsMinutes")

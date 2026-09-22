@@ -36,40 +36,20 @@ Coverage:
 
 These tests do **not** validate native Win32/DX11 behavior or render the UI.
 
-## Event timers and background service
+## Event timers
 
 ```sh
 mkdir -p out
 c++ -std=c++20 -Wall -Wextra -Wpedantic -pthread \
-    tests/event_schedule_test.cpp event_schedule.cpp -o out/event_schedule_test
+    tests/event_schedule_test.cpp src/event_schedule.cpp -o out/event_schedule_test
 ./out/event_schedule_test
-c++ -std=c++20 -Wall -Wextra -Wpedantic -Wno-unknown-pragmas -pthread \
-    -Itests/win32_stubs tests/event_service_test.cpp event_service.cpp event_schedule.cpp event_log.cpp \
-    -o out/event_service_test
-./out/event_service_test
 ```
 
-The schedule tests exercise the real parser/calculator/cache with fixed Unix
-seconds: structured/nested JSON, sorting, deduplication, exhausted daily lists
-that still feed predictions, malformed/oversized
-responses, parse-failure reasons, boss/legion phase rollover across midnight,
-Helltide's 55/60-minute boundaries, localized durations, predictions, seven-day
-expiry, the deterministic local schedule (verified 2026-09-16 anchor grids,
-48-hour horizon, exact vs predicted countdowns, anchor shifts, cache schema
-1/2 compatibility and anchor re-derivation from publisher lists) and atomic
-disk cache replacement. No current timezone or live endpoint is needed.
-
-The service tests compile the real background worker against test-only WinHTTP
-stand-ins: HTTPS request path, lazy/idempotent start, nonblocking UI snapshots,
-cancellable refresh wait, handle cleanup, cached restart after network/429/read/
-JSON failures, missing cache (offline fallback to the unpersisted local
-schedule), and unwritable cache. They also verify the event
-log records startup, cache, fetch/parse failure markers and states, and that
-log rotation caps the file while keeping the newest lines. They do not contact
-the service. Both binaries can also be built with the sanitizer flags above.
-
-The macro suite additionally checks the Events binding, conflicts, old configs,
-profile-independent persistence, key capture and actual hotkey-monitor toggling.
+The tests exercise the real calculator with fixed Unix seconds: the verified
+anchor grids (210/25/60-minute cycles), exact starts, countdowns across
+midnight, Helltide's 55/60-minute boundaries and rollover, and localized
+durations. Timers are computed from the fixed game clock — no network, no
+cache, no current timezone is involved.
 
 ## Release preparation and localization
 
@@ -126,26 +106,15 @@ Build and run the application with Visual Studio, then verify:
    the HUD label, opening/closing, persistence after restart and profile switches.
    Assigning an occupied global hotkey or F9 should show the localized conflict
    hint, not change the binding or exit the app.
-3. Compare the displayed remaining time against `/api/schedule`: boss and legion
-   count down to a start, Helltide to the end. At minute 55 Helltide shows Break;
-   at the next hour it returns to a 55-minute countdown. No dates/timezones/seconds
-   should appear. Changing only the OS timezone must not change the countdown.
-4. Leave the panel open across a five-minute refresh. A slow/offline connection
-   must not freeze the HUD or combat automation. Hide and reopen the panel;
-   this must not create another background worker or flood the endpoint.
-5. After a successful sync, disconnect and restart: cached timers keep counting
-   down from `%APPDATA%\d4rt\events_cache.json`. After the supplied event list
-   ends, predictions continue using the 210/25/60-minute cycles. Missing/corrupt/
-   older-than-seven-day cache plus no network (e.g. Cloudflare blocks the
-   request) must fall back to the local schedule — deterministic grids, no No
-   data rows — with a `local schedule from anchors` marker in the event log;
-   the local schedule must not appear in the cache file. The panel has no sync
-   status line; a failed cache write is reported with a localized message.
-6. Check both OS UI languages, including the write-error strings.
-7. Open `%APPDATA%\\d4rt\\event_log.txt`: each refresh is one timestamped line
-  with the fetch outcome, parse result, cache outcome and state. Disconnect
-  the network, wait for a retry, and confirm a failure line appears while the
-  panel keeps showing cached timers.
+3. Compare the displayed remaining time against the in-game event timer: boss
+   and legion count down to a start, Helltide to the end. At minute 55
+   Helltide shows Break; at the next hour it returns to a 55-minute countdown.
+   No dates/timezones/seconds should appear. Changing only the OS timezone
+   must not change the countdown.
+4. Hide and reopen the panel, restart the app, and play across an hour
+   boundary: the countdowns must stay correct — they are computed locally
+   and need no network, cache, or refresh.
+5. Check both OS UI languages.
 
 ## HUD layout smoke test
 
