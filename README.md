@@ -1,3 +1,7 @@
+[![GitHub Release](https://img.shields.io/github/release/pdx15/Diablo-4-Rotation-Spam)](https://github.com/pdx15/Diablo-4-Rotation-Spam/releases)
+[![Github All Releases](https://img.shields.io/github/downloads/pdx15/Diablo-4-Rotation-Spam/total.svg)](https://github.com/pdx15/Diablo-4-Rotation-Spam/releases)
+[![ViewCount](https://views.whatilearened.today/views/github/pdx15/Diablo-4-Rotation-Spam.svg)](https://github.com/pdx15/Diablo-4-Rotation-Spam)
+[![Donations Page](https://github.com/andry81-cache/gh-content-static-cache/raw/master/common/badges/donate/donate.svg)](https://github.com/pdx15/Diablo-4-Rotation-Spam#%D0%B4%D0%BE%D0%BD%D0%B0%D1%82donate)
 # Diablo 4 Overlay Rotation Spam
 
 [English](#english) | [Русский](#русский)
@@ -58,6 +62,20 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
   <img src="assets/settings_preview.png" alt="Configuration Menu" width="460"/>
 </p>
 
+## Донат/Donate
+
+Если вы хотите оставить чаевые, то можно это сделать по ссылке ниже или через QR-код:
+
+[![Поддержать через CloudTips](assets/qrCode.png)](https://pay.cloudtips.ru/p/1569852d)
+
+**Оставить чаевые через CloudTips:** https://pay.cloudtips.ru/p/1569852d
+
+| Crypto Currency | Network | Wallet ID |
+|--------------|------|----------------|
+| **USDT**     | TRC20 | `TGm951N5TpuBKayeAP6vL8wAdB9vEvdMyo` |
+| **USDT**     | ERC20 | `0xd938130bce0C9A6a8F83dDe4fEAF6A86847c148B` |
+| **BTC**      |    | `c1qhg00wd03fnhdpwhg8fa4a3tpshhmsf0uslw8nf` |
+
 ---
 
 ## Русский
@@ -111,5 +129,3 @@ Maintainers can run **Actions → Release → Run workflow**, select the source 
   <img src="assets/hud_preview_ru.png" alt="Мини-панель статуса" width="240"/>
   <img src="assets/settings_preview_ru.png" alt="Меню настроек" width="460"/>
 </p>
-
-[![ViewCount](https://views.whatilearened.today/views/github/pdx15/Diablo-4-Rotation-Spam.svg)](https://github.com/pdx15/Diablo-4-Rotation-Spam)
