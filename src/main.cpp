@@ -26,6 +26,7 @@
 #include "version.h"
 
 extern LocStrings lang;
+extern bool IsDiabloActive();
 extern std::atomic<bool> isScriptActive;
 extern std::atomic<bool> isHealthy;
 extern bool showSettingsWindow;
@@ -75,6 +76,83 @@ namespace {
 	int lastProfileIndex = -1;
 	bool updatePopupOpen = false;
 	UpdatePhase lastUpdatePhase = UpdatePhase::Idle;
+
+	// The overlay window covers the whole virtual desktop, so it must not
+	// present a new frame 60 times a second while gaming: every presented
+	// frame makes the compositor re-blend the entire screen on top of the
+	// game and burn GPU bandwidth (in v1.1.0.0 that dropped the in-game FPS
+	// roughly by half compared to the smaller 1200x760 overlay of v1.0.5.1).
+	// The frame is therefore rendered on demand: it is re-presented only
+	// when a window message arrives or one of the visible values below
+	// changes. While gaming the window is click-through, nothing changes,
+	// and the last frame simply stays on screen.
+	struct HudState {
+		bool gameActive = false;
+		bool scriptActive = false;
+		bool healthy = true;
+		bool settingsOpen = false;
+		bool eventsOpen = false;
+		bool capturing = false;
+		bool capturingCoords = false;
+		std::string profileName;
+		std::string keyLabels;
+		std::string eventsText;
+		std::string updateText;
+	};
+
+	bool HudStateEqual(const HudState& a, const HudState& b) {
+		return a.gameActive == b.gameActive &&
+			a.scriptActive == b.scriptActive &&
+			a.healthy == b.healthy &&
+			a.settingsOpen == b.settingsOpen &&
+			a.eventsOpen == b.eventsOpen &&
+			a.capturing == b.capturing &&
+			a.capturingCoords == b.capturingCoords &&
+			a.profileName == b.profileName &&
+			a.keyLabels == b.keyLabels &&
+			a.eventsText == b.eventsText &&
+			a.updateText == b.updateText;
+	}
+
+	HudState ComputeHudState() {
+		HudState state;
+		state.gameActive = IsDiabloActive();
+		state.scriptActive = isScriptActive;
+		state.healthy = isHealthy;
+		{
+			std::lock_guard<std::recursive_mutex> lock(settingsMutex);
+			state.settingsOpen = showSettingsWindow;
+			state.eventsOpen = showEventsWindow;
+			state.capturing = isCapturing;
+			state.capturingCoords = isCapturingCoordinates;
+			if (!profiles.empty() && activeProfileIndex >= 0 &&
+				activeProfileIndex < static_cast<int>(profiles.size()))
+				state.profileName = profiles[activeProfileIndex].name;
+			state.keyLabels = toggleKeyName + "\x01" + settingsKeyName +
+				"\x01" + eventsKeyName;
+		}
+		if (state.eventsOpen) {
+			auto timers = events::CalculateTimers(events::Now());
+			auto row = [](const events::Countdown& t) {
+				if (t.phase == events::Phase::Break) return std::string("break");
+				const bool ending = t.phase == events::Phase::EndsIn;
+				return std::string(ending ? "ends" : "starts") +
+					events::FormatDuration(t.seconds, lang.eventsHours,
+						lang.eventsMinutes);
+			};
+			state.eventsText = row(timers.worldBoss) + "\x01" +
+				row(timers.legion) + "\x01" + row(timers.helltide);
+		}
+		{
+			UpdateStatus status = GetUpdateStatus();
+			state.updateText = std::to_string(static_cast<int>(status.phase)) +
+				"\x01" + std::to_string(
+					static_cast<int>(status.downloadProgress * 1000.0f)) +
+				"\x01" + std::to_string(status.totalBytes) + "\x01" +
+				status.message;
+		}
+		return state;
+	}
 }  // namespace
 
 extern std::string GetConfigPath();
@@ -248,14 +326,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ImVec2 statusWindowPos(0.0f, 0.0f);
 	ImVec2 statusWindowSize(kStatusWindowDefaultWidth, kStatusWindowDefaultHeight);
 	bool done = false;
+	bool needsRedraw = true;
+	HudState lastRenderedState;
 	while (!done) {
 		MSG msg;
+		bool gotMessage = false;
 		while (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+			gotMessage = true;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 			if (msg.message == WM_QUIT) done = true;
 		}
 		if (done) break;
+		if (gotMessage) needsRedraw = true;
+
+		const HudState state = ComputeHudState();
+		if (!HudStateEqual(state, lastRenderedState)) needsRedraw = true;
 
 		bool overlayNeedsInput = false;
 		{
@@ -272,6 +358,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		else {
 			if (!(exStyle & WS_EX_TRANSPARENT))
 				SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+		}
+
+		if (!needsRedraw) {
+			// Nothing visible changed: the presented frame is still
+			// correct. Poll the state at ~60 Hz without rendering and
+			// without spinning the CPU.
+			std::this_thread::sleep_for(std::chrono::milliseconds(16));
+			continue;
 		}
 
 		ImGui_ImplDX11_NewFrame();
@@ -660,6 +754,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			clear_color_with_alpha);
 		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 		g_pSwapChain->Present(1, 0);
+		lastRenderedState = state;
+		needsRedraw = false;
 	}
 
 	ImGui_ImplDX11_Shutdown();

@@ -130,3 +130,24 @@ Build and run the application with Visual Studio, then verify:
    executable is migrated on first run.
 5. Delete `%APPDATA%\d4rt\imgui.ini`: panels return to the defaults (HUD at the
    top-left, events right below it).
+
+## Performance smoke test
+
+The overlay window covers the whole virtual desktop, so it must not redraw
+continuously while gaming (a full-screen 60 fps redraw in v1.1.0.0 cut the
+in-game FPS roughly in half compared to v1.0.5.1). The render loop now
+presents a new frame only when a window message arrives or the visible HUD
+state changes (game/script/health status, panel visibility, capture modes,
+the active profile name, hotkey labels, the events countdown minute, or
+update status).
+
+1. In Diablo IV, with the options window closed and no capture mode, let the
+   overlay sit idle while playing. `d4rt.exe` should use near-zero CPU/GPU in
+   Task Manager, and the in-game FPS should match what the game reaches with
+   the overlay not running.
+2. Toggle the script (Mouse5), watch the health status flip, and switch
+   game focus: the HUD must update within a frame of each change.
+3. Open options and move the mouse: panels and inputs stay responsive; close
+   options and the overlay goes quiet again.
+4. Keep the events panel open and idle: the countdown ticks once a minute
+   without continuous redrawing.
