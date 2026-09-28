@@ -28,7 +28,7 @@ Coverage:
 - 384 combinations of game focus, script state, auto-heal enabled/disabled,
   independent mode, health state, combat condition, and held mouse buttons.
   Both heal and combat-key output are checked in every combination.
-- Heal cooldown, live setting changes, script shutdown, and unchanged fast loot.
+- Heal cooldown, live setting changes, and script shutdown.
 - Profile defaults, snapshot propagation, cloning, switching, deletion, and
   save/load round-trips with different per-profile values.
 - Missing/invalid options in older key-value configs, and legacy-format migration.

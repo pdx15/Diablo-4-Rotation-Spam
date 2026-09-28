@@ -53,12 +53,6 @@ int healthVKey = 'Q';
 std::string healthKeyName = "Q";
 int healthDelayMs = 50;
 std::chrono::steady_clock::time_point lastHealthPressed;
-int fastLootHoldVKey = VK_LBUTTON;
-std::string fastLootHoldKeyName = "LButton";
-int fastLootClickVKey = VK_LBUTTON;
-std::string fastLootClickKeyName = "LButton";
-int fastLootDelayMs = 40;
-std::chrono::steady_clock::time_point lastFastLootPressed;
 std::vector<ProfileConfig> profiles;
 int activeProfileIndex = 0;
 
@@ -80,9 +74,6 @@ struct MacroSettingsSnapshot {
 	int healthDelayMs = 50;
 	int healthX = 960;
 	int healthY = 1010;
-	int fastLootHoldVKey = VK_LBUTTON;
-	int fastLootClickVKey = VK_LBUTTON;
-	int fastLootDelayMs = 40;
 	std::vector<SpamKey> spamKeys;
 };
 
@@ -147,48 +138,6 @@ void PressKeyWithModifiers(WORD wVk, bool shift, bool ctrl, bool alt) {
 
 void PressKey(WORD wVk) { PressKeyWithModifiers(wVk, false, false, false); }
 
-void ClickMouseButton(int vk) {
-	INPUT down = { 0 };
-	INPUT up = { 0 };
-	down.type = INPUT_MOUSE;
-	up.type = INPUT_MOUSE;
-
-	if (vk == VK_LBUTTON) {
-		down.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-		up.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-	}
-	else if (vk == VK_RBUTTON) {
-		down.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
-		up.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
-	}
-	else if (vk == VK_MBUTTON) {
-		down.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
-		up.mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
-	}
-	else if (vk == VK_XBUTTON1 || vk == VK_XBUTTON2) {
-		down.mi.dwFlags = MOUSEEVENTF_XDOWN;
-		up.mi.dwFlags = MOUSEEVENTF_XUP;
-		down.mi.mouseData = (vk == VK_XBUTTON1) ? XBUTTON1 : XBUTTON2;
-		up.mi.mouseData = down.mi.mouseData;
-	}
-	else {
-		return;
-	}
-
-	INPUT inputs[2] = { down, up };
-	SendInput(2, inputs, sizeof(INPUT));
-}
-
-void ClickAnyButton(int vk) {
-	if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON ||
-		vk == VK_XBUTTON1 || vk == VK_XBUTTON2) {
-		ClickMouseButton(vk);
-	}
-	else {
-		PressKey(static_cast<WORD>(vk));
-	}
-}
-
 bool IsDiabloActive() {
 	HWND hwnd = GetForegroundWindow();
 	if (!hwnd) return false;
@@ -232,14 +181,11 @@ MacroSettingsSnapshot GetMacroSettingsSnapshot() {
 	return { combatMouseTrigger,
 			globalHealthCheckEnable,
 			globalHealthIndependent,
-			healthVKey,
-			healthDelayMs,
-			healthX,
-			healthY,
-			fastLootHoldVKey,
-			fastLootClickVKey,
-			fastLootDelayMs,
-			spamKeys };
+		healthVKey,
+		healthDelayMs,
+		healthX,
+		healthY,
+		spamKeys };
 }
 
 std::vector<SpamKey> MakeDefaultSpamKeys() {
@@ -353,11 +299,6 @@ ProfileConfig MakeProfileFromGlobals(const std::string& name) {
 	profile.healthDelayMs = healthDelayMs;
 	profile.healthX = healthX;
 	profile.healthY = healthY;
-	profile.fastLootHoldVKey = fastLootHoldVKey;
-	profile.fastLootHoldKeyName = fastLootHoldKeyName;
-	profile.fastLootClickVKey = fastLootClickVKey;
-	profile.fastLootClickKeyName = fastLootClickKeyName;
-	profile.fastLootDelayMs = fastLootDelayMs;
 	profile.spamKeys = spamKeys;
 	return profile;
 }
@@ -371,11 +312,6 @@ void ApplyProfileToGlobals(const ProfileConfig& profile) {
 	healthDelayMs = profile.healthDelayMs;
 	healthX = profile.healthX;
 	healthY = profile.healthY;
-	fastLootHoldVKey = profile.fastLootHoldVKey;
-	fastLootHoldKeyName = profile.fastLootHoldKeyName;
-	fastLootClickVKey = profile.fastLootClickVKey;
-	fastLootClickKeyName = profile.fastLootClickKeyName;
-	fastLootDelayMs = profile.fastLootDelayMs;
 	spamKeys = profile.spamKeys;
 }
 
@@ -416,11 +352,6 @@ void ResetToDefaultConfig() {
 	healthDelayMs = 50;
 	healthX = 960;
 	healthY = 1010;
-	fastLootHoldVKey = VK_LBUTTON;
-	fastLootHoldKeyName = "LButton";
-	fastLootClickVKey = VK_LBUTTON;
-	fastLootClickKeyName = "LButton";
-	fastLootDelayMs = 40;
 	spamKeys = MakeDefaultSpamKeys();
 	profiles.clear();
 	profiles.push_back(MakeProfileFromGlobals("Default"));
@@ -467,13 +398,6 @@ void SaveConfig() {
 		out << prefix << "healthDelayMs=" << profile.healthDelayMs << "\n";
 		out << prefix << "healthX=" << profile.healthX << "\n";
 		out << prefix << "healthY=" << profile.healthY << "\n";
-		out << prefix << "fastLootHoldVKey=" << profile.fastLootHoldVKey << "\n";
-		out << prefix << "fastLootHoldKeyName=" << profile.fastLootHoldKeyName
-			<< "\n";
-		out << prefix << "fastLootClickVKey=" << profile.fastLootClickVKey << "\n";
-		out << prefix << "fastLootClickKeyName=" << profile.fastLootClickKeyName
-			<< "\n";
-		out << prefix << "fastLootDelayMs=" << profile.fastLootDelayMs << "\n";
 		out << prefix << "spamCount=" << profile.spamKeys.size() << "\n";
 
 		for (size_t j = 0; j < profile.spamKeys.size(); ++j) {
@@ -566,18 +490,6 @@ bool LoadModernConfig() {
 			ReadInt(values, prefix + "healthDelayMs", 50, 1, 600000);
 		profile.healthX = ReadInt(values, prefix + "healthX", 960, -32000, 32000);
 		profile.healthY = ReadInt(values, prefix + "healthY", 1010, -32000, 32000);
-		profile.fastLootHoldVKey = ReadInt(
-			values, prefix + "fastLootHoldVKey",
-			ReadInt(values, prefix + "fastLootVKey", VK_LBUTTON, 1, 255), 1, 255);
-		profile.fastLootHoldKeyName =
-			ReadString(values, prefix + "fastLootHoldKeyName",
-				ReadString(values, prefix + "fastLootKeyName", "LButton"));
-		profile.fastLootClickVKey =
-			ReadInt(values, prefix + "fastLootClickVKey", VK_LBUTTON, 1, 255);
-		profile.fastLootClickKeyName =
-			ReadString(values, prefix + "fastLootClickKeyName", "LButton");
-		profile.fastLootDelayMs =
-			ReadInt(values, prefix + "fastLootDelayMs", 40, 1, 600000);
 
 		int spamCount = ReadInt(values, prefix + "spamCount", 0, 0, 64);
 		for (int j = 0; j < spamCount; ++j) {
@@ -717,24 +629,9 @@ void CoreMacroLoop() {
 					PressKey(settings.healthVKey);
 					lastHealthPressed = now;
 				}
-			}
+		}
 
-			if (isScriptActive) {
-				bool isFastLootHeld =
-					(GetAsyncKeyState(settings.fastLootHoldVKey) & 0x8000) != 0;
-				if (isFastLootHeld) {
-					auto elapsedLoot =
-						std::chrono::duration_cast<std::chrono::milliseconds>(
-							now - lastFastLootPressed)
-						.count();
-					if (elapsedLoot >= settings.fastLootDelayMs) {
-						ClickAnyButton(settings.fastLootClickVKey);
-						lastFastLootPressed = now;
-					}
-				}
-			}
-
-			if (spamLastPressed.size() != settings.spamKeys.size()) {
+		if (spamLastPressed.size() != settings.spamKeys.size()) {
 				spamLastPressed.resize(settings.spamKeys.size());
 			}
 
@@ -778,8 +675,6 @@ bool AssignCapturedKey(int type, int vk, const std::string& name) {
 	else if (type == CaptureSettings) { settingsHotkey = vk; settingsKeyName = name; }
 	else if (type == CaptureEvents) { eventsHotkey = vk; eventsKeyName = name; }
 	else if (type == CaptureHealth) { healthVKey = vk; healthKeyName = name; }
-	else if (type == CaptureLootHold) { fastLootHoldVKey = vk; fastLootHoldKeyName = name; }
-	else if (type == CaptureLootClick) { fastLootClickVKey = vk; fastLootClickKeyName = name; }
 	else if (type >= CaptureSpamBase && static_cast<size_t>(type - CaptureSpamBase) < spamKeys.size()) {
 		auto& key = spamKeys[type - CaptureSpamBase];
 		key.vKey = vk;
@@ -833,10 +728,9 @@ void GlobalHotkeyMonitor() {
 			}
 		}
 		else if (capturingKey) {
-			bool allowMouseButtons = (captureType == CaptureLootHold || captureType == CaptureLootClick);
-
 			for (int vk = 1; vk < 256; vk++) {
-				if (!allowMouseButtons && (vk == VK_LBUTTON || vk == VK_RBUTTON))
+				// Mouse buttons are not valid hotkeys or capture targets.
+				if (vk == VK_LBUTTON || vk == VK_RBUTTON)
 					continue;
 
 				if (GetAsyncKeyState(vk) & 0x8000) {
@@ -1018,12 +912,6 @@ void LoadLanguage() {
 			lang.lblCtrl = val;
 		else if (key == "lblAlt")
 			lang.lblAlt = val;
-		else if (key == "lblFastLootHoldKey")
-			lang.lblFastLootHoldKey = val;
-		else if (key == "lblFastLootClickKey")
-			lang.lblFastLootClickKey = val;
-		else if (key == "lblFastLootTimer")
-			lang.lblFastLootTimer = val;
 		else if (key == "chkAutoUpdate")
 			lang.chkAutoUpdate = val;
 		else if (key == "updateCurrentVersion")

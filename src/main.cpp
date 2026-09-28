@@ -44,11 +44,6 @@ extern std::string healthKeyName;
 extern int healthDelayMs;
 extern int healthX;
 extern int healthY;
-extern int fastLootHoldVKey;
-extern std::string fastLootHoldKeyName;
-extern int fastLootClickVKey;
-extern std::string fastLootClickKeyName;
-extern int fastLootDelayMs;
 extern std::string toggleKeyName;
 extern std::string settingsKeyName;
 extern std::string eventsKeyName;
@@ -680,27 +675,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 						" Y:" + std::to_string(healthY) + ")";
 					if (ImGui::Button(coordsLabel.c_str())) isCapturingCoordinates = true;
 				}
-
-				ImGui::Separator();
-				if (ImGui::Button(
-					(lang.lblFastLootHoldKey + "[" + fastLootHoldKeyName + "]")
-					.c_str())) {
-					BeginKeyCapture(CaptureLootHold);
-				}
-				ImGui::SameLine();
-				if (ImGui::Button(
-					(lang.lblFastLootClickKey + "[" + fastLootClickKeyName + "]")
-					.c_str())) {
-					BeginKeyCapture(CaptureLootClick);
-				}
-				ImGui::SameLine();
-				ImGui::PushItemWidth(100);
-				if (ImGui::InputInt(lang.lblFastLootTimer.c_str(), &fastLootDelayMs, 0,
-					0)) {
-					if (fastLootDelayMs < 1) fastLootDelayMs = 1;
-					SaveConfig();
-				}
-				ImGui::PopItemWidth();
 
 				ImGui::Separator();
 				ImGui::Text(lang.lblSpamList.c_str());

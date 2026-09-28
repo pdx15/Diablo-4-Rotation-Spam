@@ -24,9 +24,6 @@ void resetInput() {
 	std::fill(std::begin(fake_win32::keys), std::end(fake_win32::keys), false);
 	fake_win32::inputs.clear();
 	fake_win32::beforeTick = {};
-	fastLootHoldVKey = 'F';
-	fastLootClickVKey = 'L';
-	lastFastLootPressed = {};
 }
 void runLoop() {
 	try {
@@ -111,22 +108,6 @@ void testCooldownAndLiveChanges() {
 	runLoop();
 	assert(keyDowns('Q') == 1);
 	std::cout << "PASS: heal cooldown and live independent-mode/script toggles\n";
-}
-
-void testFastLootUnchanged() {
-	for (bool independent : {false, true}) {
-		ResetToDefaultConfig();
-		resetInput();
-		globalHealthIndependent = independent;
-		isScriptActive = true;
-		fake_win32::healthy = true;
-		fake_win32::keys['F'] = true;
-		runLoop();
-		assert(keyDowns('Q') == 0);
-		assert(keyDowns('1') == 0);
-		assert(keyDowns('L') == 1);
-	}
-	std::cout << "PASS: independent auto-heal does not change fast loot\n";
 }
 
 void testProfilesAndPersistence() {
@@ -306,7 +287,6 @@ int main() {
 	fake_win32::appData = temp.string() + "/";
 	testActivationMatrix();
 	testCooldownAndLiveChanges();
-	testFastLootUnchanged();
 	testProfilesAndPersistence();
 	testConfigCompatibility();
 	testEventsHotkey();
