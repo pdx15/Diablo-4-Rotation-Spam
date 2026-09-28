@@ -9,10 +9,8 @@ enum KeyCaptureTarget {
 	CaptureToggle = 0,
 	CaptureSettings = 1,
 	CaptureHealth = 2,
-	CaptureLootHold = 3,
-	CaptureLootClick = 4,
-	CaptureEvents = 5,
-	CaptureSpamBase = 6
+	CaptureEvents = 3,
+	CaptureSpamBase = 4
 };
 
 // Remapping or capturing a held key must not also activate its action.
@@ -89,9 +87,6 @@ struct LocStrings {
 	std::string lblShift = "Shift";
 	std::string lblCtrl = "Ctrl";
 	std::string lblAlt = "Alt";
-	std::string lblFastLootHoldKey = "Fast Loot Hold Key: ";
-	std::string lblFastLootClickKey = "Fast Loot Click Key: ";
-	std::string lblFastLootTimer = "Fast Loot Timer (ms)";
 	std::string chkAutoUpdate = "Auto update";
 	std::string updateCurrentVersion = "Current version:";
 	std::string updateStatus = "Update status:";
@@ -151,10 +146,5 @@ struct ProfileConfig {
 	int healthDelayMs = 50;
 	int healthX = 960;
 	int healthY = 1010;
-	int fastLootHoldVKey = 1;  // VK_LBUTTON by default (key to hold down)
-	std::string fastLootHoldKeyName = "LButton";
-	int fastLootClickVKey = 1;  // VK_LBUTTON by default (in-game loot key)
-	std::string fastLootClickKeyName = "LButton";
-	int fastLootDelayMs = 40;
 	std::vector<SpamKey> spamKeys;
 };
